@@ -1,3 +1,19 @@
+## 11.08.2026
+
+```diff
+[features]
++ BackgroundBlur — creates a BlurEffect in Lighting on window open; tweens size 0 → 18 when UI is shown and back to 0 on close
++ TitleAnimation — title holder slides in from -40px offset with a fade-in on all text and images when the window first appears
++ IconAnimation — window icon container loops a 360° spin tween every 8 seconds
++ AddGroupboxAnimation — an accent-colored glow line sweeps left → right across each groupbox every 3 seconds (ClipsDescendants required, added automatically)
++ Window outer glow — a pulsing sliced ImageLabel (ZIndex -1) sits outside MainFrame and pulses transparency between 0.4 and 0.2 on a Sine InOut infinite tween
++ Tab color support — Window:AddTab() now accepts Color / TextColor / IconColor in its info table; pass a scheme key string ("AccentColor") or a Color3 to tint the tab label and icon; registered to the color registry for theme sync
++ Library:CreateKeySystem(Info) — Junkie SDK key auth with Arqel UI
++ Library:CreateAegisKeySystem(Info) — Lua Aegis SDK key auth with Arqel UI
++ Library:CreateKeyForgeKeySystem(Info) — KeyForge SDK key auth with Arqel UI
++ Library:CreateArqelKeySystem(Info) — custom OnVerify callback key auth with Arqel UI
+```
+
 ## 05.08.2026
 
 ```diff
