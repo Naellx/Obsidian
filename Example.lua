@@ -28,7 +28,13 @@ local Window = Library:CreateWindow({
 	NotifySide = "Right",
 	ShowCustomCursor = true,
 
-	-- The footer can be a plain string, in which case CopyableFooter (default true)
+	BackgroundBlur = true,          -- blur game behind UI
+    IconAnimation = true,           -- pulse / animate window icon
+    TitleAnimation = true,          -- title text animation
+    AddGroupboxAnimation = true,    -- accent glow line scanning on 
+		
+
+    -- The footer can be a plain string, in which case CopyableFooter (default true)
 	-- decides whether the whole thing is copyable:
 	-- Footer = "version: example",
 
