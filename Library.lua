@@ -2036,12 +2036,6 @@ function Library:AddBlank(Frame: GuiObject, Size: UDim2)
 end
 
 --// Animations \\--
-function Library:SetGlow(State: boolean)
-    assert(typeof(State) == "boolean", "Expected boolean for State, got: " .. typeof(State))
-    if self.Window and self.Window.Glow then
-        self.Window.Glow.Visible = State
-    end
-end
 
 local TransparencyCache = {}
 local ActiveTabTweens = setmetatable({}, { __mode = "k" })
@@ -9914,7 +9908,6 @@ function Library:CreateWindow(WindowInfo)
         Library:AddOutline(MainFrame)
         -- Soft outer glow / drop shadow attached to window body outside
         local WindowOuterGlow = New("ImageLabel", {
-            Name = "Glow",
             BackgroundTransparency = 1,
             Image = "rbxassetid://6014261993",
             ImageColor3 = "DarkColor",
@@ -9926,7 +9919,6 @@ function Library:CreateWindow(WindowInfo)
             ZIndex = -1,
             Parent = MainFrame,
         })
-        Window.Glow = WindowOuterGlow
         task.spawn(function()
             local glowInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true, 0)
             TweenService:Create(WindowOuterGlow, glowInfo, {ImageTransparency = 0.2}):Play()
@@ -14249,10 +14241,6 @@ function Library:CreateWindow(WindowInfo)
         if MiniFrame then
             MiniFrame.Visible = Library.Toggled and Minimized
         end
-    end
-
-    function Window:SetGlow(State: boolean)
-        return Library:SetGlow(State)
     end
 
     function Window:Toggle(Value: boolean?)
