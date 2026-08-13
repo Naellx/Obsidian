@@ -208,6 +208,12 @@ local Library = {
     --// Loading Window \\--
     ActiveLoading = nil,
 
+    --// Background Image Surfaces \\--
+    HasBackgroundImage = false,
+    BackgroundImageSurfaces = {},
+    BackgroundImagePanelTransparency = 0.18,
+    BackgroundImageContentTransparency = 0.08,
+
     --// Corners \\--
     Corners = {},
     SpecificCorners = {},
@@ -2033,6 +2039,41 @@ function Library:AddBlank(Frame: GuiObject, Size: UDim2)
         Size = Size or UDim2.fromScale(0, 0),
         Parent = Frame,
     })
+end
+
+--// Glass Panel Helpers \\--
+local function GetBackgroundImageSurfaceTransparency(DefaultTransparency: number?, Layer: string?)
+    DefaultTransparency = DefaultTransparency or 0
+    if not Library.HasBackgroundImage then
+        return DefaultTransparency
+    end
+    local BackgroundTransparency = Layer == "Panel" and Library.BackgroundImagePanelTransparency
+        or Library.BackgroundImageContentTransparency
+    return math.max(DefaultTransparency, BackgroundTransparency or 0)
+end
+
+local function RegisterBackgroundImageSurface(Instance: GuiObject, DefaultTransparency: number?, Layer: string?)
+    Library.BackgroundImageSurfaces[Instance] = {
+        DefaultTransparency = DefaultTransparency or 0,
+        Layer = Layer or "Content",
+    }
+    Instance.BackgroundTransparency = GetBackgroundImageSurfaceTransparency(DefaultTransparency, Layer)
+    return Instance
+end
+
+function Library:AddGradient(Frame: GuiObject, Info)
+    Info = Info or {}
+    local Gradient = New("UIGradient", {
+        Color = Info.Color or Info.ColorSequence or ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+            ColorSequenceKeypoint.new(1, Library.Scheme.BackgroundColor),
+        }),
+        Offset = Info.Offset or Vector2.zero,
+        Rotation = Info.Rotation or 0,
+        Transparency = Info.Transparency or NumberSequence.new(0),
+        Parent = Frame,
+    })
+    return Gradient
 end
 
 --// Animations \\--
@@ -4981,47 +5022,47 @@ do
 
             if typeof(First) == "table" or typeof(Second) == "table" then
                 local Params = typeof(First) == "table" and First or Second
-                Info.Text = Params.Text or ""
-                Info.Func = Params.Func or Params.Callback or function() end
+                Info.Text     = Params.Text or ""
+                Info.Func     = Params.Func or Params.Callback or function() end
                 Info.HoldTime = Params.HoldTime or Params.Time or 1
-                Info.Tooltip = Params.Tooltip
+                Info.Tooltip  = Params.Tooltip
                 Info.DisabledTooltip = Params.DisabledTooltip
-                Info.Risky = Params.Risky or false
+                Info.Risky    = Params.Risky or false
                 Info.Disabled = Params.Disabled or false
-                Info.Visible = Params.Visible or true
-                Info.Idx = typeof(Second) == "table" and First or nil
+                Info.Visible  = Params.Visible ~= false
+                Info.Idx      = typeof(Second) == "table" and First or nil
             else
-                Info.Text = First or ""
-                Info.Func = Second or function() end
+                Info.Text     = First or ""
+                Info.Func     = Second or function() end
                 Info.HoldTime = select(3, ...) or 1
-                Info.Tooltip = nil
+                Info.Tooltip  = nil
                 Info.DisabledTooltip = nil
-                Info.Risky = false
+                Info.Risky    = false
                 Info.Disabled = false
-                Info.Visible = true
-                Info.Idx = nil
+                Info.Visible  = true
+                Info.Idx      = nil
             end
             return Info
         end
 
-        local Info = GetInfo(...)
-        local Groupbox = self
+        local Info      = GetInfo(...)
+        local Groupbox  = self
         local Container = Groupbox.Container
 
         local HoldButton = {
-            Connections = {},
-            Destroyed = false,
-            Text = Info.Text,
-            Func = Info.Func,
-            HoldTime = Info.HoldTime,
-            Tooltip = Info.Tooltip,
-            DisabledTooltip = Info.DisabledTooltip,
-            TooltipTable = nil,
-            Risky = Info.Risky,
-            Disabled = Info.Disabled,
-            Visible = Info.Visible,
-            Tween = nil,
-            Type = "HoldButton",
+            Connections      = {},
+            Destroyed        = false,
+            Text             = Info.Text,
+            Func             = Info.Func,
+            HoldTime         = Info.HoldTime,
+            Tooltip          = Info.Tooltip,
+            DisabledTooltip  = Info.DisabledTooltip,
+            TooltipTable     = nil,
+            Risky            = Info.Risky,
+            Disabled         = Info.Disabled,
+            Visible          = Info.Visible,
+            Locked           = false,
+            Type             = "HoldButton",
         }
 
         local Holder = New("Frame", {
@@ -5029,7 +5070,6 @@ do
             Size = UDim2.new(1, 0, 0, 21),
             Parent = Container,
         })
-
         New("UIListLayout", {
             FillDirection = Enum.FillDirection.Horizontal,
             HorizontalFlex = Enum.UIFlexAlignment.Fill,
@@ -5056,38 +5096,30 @@ do
             ZIndex = Base.ZIndex,
             Parent = Base,
         })
-        table.insert(
-            Library.Corners,
-            New("UICorner", {
-                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
-                Parent = FillBar,
-            })
-        )
+        table.insert(Library.Corners, New("UICorner", {
+            CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+            Parent = FillBar,
+        }))
 
         local Stroke = New("UIStroke", {
             Color = "OutlineColor",
             Transparency = HoldButton.Disabled and 0.5 or 0,
             Parent = Base,
         })
+        table.insert(Library.Corners, New("UICorner", {
+            CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+            Parent = Base,
+        }))
 
-        table.insert(
-            Library.Corners,
-            New("UICorner", {
-                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
-                Parent = Base,
-            })
-        )
-
-        local Holding = false
+        local Holding  = false
         local HoldTween = nil
 
         Base.MouseButton1Down:Connect(function()
             if HoldButton.Disabled or HoldButton.Locked then return end
-            Holding = true
+            Holding  = true
             FillBar.Size = UDim2.new(0, 0, 1, 0)
             HoldTween = TweenService:Create(FillBar, TweenInfo.new(HoldButton.HoldTime, Enum.EasingStyle.Linear), {Size = UDim2.new(1, 0, 1, 0)})
             HoldTween:Play()
-            
             local Connection
             Connection = HoldTween.Completed:Connect(function(status)
                 if status == Enum.PlaybackState.Completed and Holding then
@@ -5102,18 +5134,37 @@ do
         local function Release()
             if not Holding then return end
             Holding = false
-            if HoldTween then
-                HoldTween:Cancel()
-            end
+            if HoldTween then HoldTween:Cancel() end
             TweenService:Create(FillBar, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 0, 1, 0)}):Play()
         end
-
         Base.MouseButton1Up:Connect(Release)
         Base.MouseLeave:Connect(Release)
 
-        HoldButton.Base = Base
-        HoldButton.Stroke = Stroke
-        HoldButton.FillBar = FillBar
+        HoldButton.Base     = Base
+        HoldButton.Stroke   = Stroke
+        HoldButton.FillBar  = FillBar
+
+        function HoldButton:SetDisabled(Value)
+            HoldButton.Disabled = Value
+            Base.Active = not Value
+            Base.BackgroundColor3 = Value and Library.Scheme.BackgroundColor or Library.Scheme.MainColor
+            Stroke.Transparency = Value and 0.5 or 0
+        end
+
+        function HoldButton:SetText(Value)
+            HoldButton.Text = Value
+            Base.Text = Value
+        end
+
+        function HoldButton:SetVisible(Value)
+            HoldButton.Visible = Value
+            Holder.Visible = Value
+        end
+
+        function HoldButton:Destroy()
+            HoldButton.Destroyed = true
+            Holder:Destroy()
+        end
 
         return HoldButton
     end
@@ -9057,373 +9108,149 @@ do
         return Passthrough
     end
 
-
-    function Funcs:AddCanvas(Idx, Info)
-        if typeof(Idx) == "table" then
-            Info = Idx
-            Idx = Info.Idx
+    local function ParseNewElementInfo(...)
+        local First = select(1, ...)
+        local Second = select(2, ...)
+        if typeof(First) == "table" then
+            return nil, First
+        elseif typeof(Second) == "table" then
+            return First, Second
         end
+        return nil, {}
+    end
+
+    function Funcs:AddGlassPanel(...)
+        local Idx, Info = ParseNewElementInfo(...)
         Info = Info or {}
+
         local Groupbox = self
         local Container = Groupbox.Container
-        local Height = math.max(32, tonumber(Info.Height) or 160)
-        local Canvas = { Height = Height, Visible = Info.Visible ~= false, Drawings = {}, Type = "Canvas" }
+        local Accent = Info.AccentColor or "AccentColor"
+
+        local Panel = {
+            Text        = Info.Title or Info.Text or "Glass Panel",
+            Title       = Info.Title or Info.Text or "Glass Panel",
+            Description = Info.Description or Info.Desc or "",
+            Visible     = Info.Visible ~= false,
+            Type        = "GlassPanel",
+        }
+
         local Holder = New("Frame", {
-            BackgroundColor3 = Info.BackgroundColor3 or Info.Color or "MainColor",
-            BackgroundTransparency = Info.BackgroundTransparency or Info.Transparency or 0.12,
-            ClipsDescendants = true,
-            Size = UDim2.new(1, 0, 0, Height),
-            Visible = Canvas.Visible,
-            Parent = Container,
+            BackgroundColor3       = Info.BackgroundColor or "MainColor",
+            BackgroundTransparency = Info.Transparency or 0.18,
+            ClipsDescendants       = true,
+            Size                   = UDim2.new(1, 0, 0, Info.Height or 76),
+            Visible                = Panel.Visible,
+            Parent                 = Container,
         })
+        RegisterBackgroundImageSurface(Holder, Info.Transparency or 0.18, "Panel")
         table.insert(Library.Corners, New("UICorner", {
-            CornerRadius = UDim.new(0, Info.CornerRadius or math.max(4, Library.CornerRadius)),
+            CornerRadius = UDim.new(0, Info.CornerRadius or Library.CornerRadius),
             Parent = Holder,
         }))
-        if Info.Outline ~= false then
-            Library:AddOutline(Holder)
+        Library:AddOutline(Holder, {
+            Color       = Info.StrokeColor or Accent,
+            Thickness   = Info.StrokeThickness or 1,
+            Transparency = Info.StrokeTransparency or 0.35,
+        })
+        if Info.Gradient ~= false then
+            Library:AddGradient(Holder, {
+                Color = Info.GradientColorSequence or ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, typeof(Accent) == "Color3" and Accent or Library.Scheme.AccentColor),
+                    ColorSequenceKeypoint.new(1, Library.Scheme.MainColor),
+                }),
+                Rotation     = Info.GradientRotation or 25,
+                Transparency = Info.GradientTransparency or NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.72),
+                    NumberSequenceKeypoint.new(1, 0.96),
+                }),
+            })
         end
-        local Layer = New("Frame", {
+        New("UIPadding", {
+            PaddingBottom = UDim.new(0, 10),
+            PaddingLeft   = UDim.new(0, 12),
+            PaddingRight  = UDim.new(0, 12),
+            PaddingTop    = UDim.new(0, 10),
+            Parent        = Holder,
+        })
+
+        local Icon
+        local ParsedIcon = Info.Icon and Library:GetCustomIcon(Info.Icon)
+        if ParsedIcon then
+            Icon = New("ImageLabel", {
+                BackgroundTransparency = 1,
+                Image                  = ParsedIcon.Url,
+                ImageColor3            = Info.IconColor or Accent,
+                ImageRectOffset        = ParsedIcon.ImageRectOffset,
+                ImageRectSize          = ParsedIcon.ImageRectSize,
+                Position               = UDim2.fromOffset(0, 2),
+                Size                   = UDim2.fromOffset(24, 24),
+                Parent                 = Holder,
+            })
+        end
+
+        local Title = New("TextLabel", {
             BackgroundTransparency = 1,
-            ClipsDescendants = true,
-            Size = UDim2.fromScale(1, 1),
-            Parent = Holder,
+            Position               = UDim2.fromOffset(Icon and 32 or 0, 0),
+            Size                   = UDim2.new(1, Icon and -32 or 0, 0, 20),
+            Text                   = Panel.Title,
+            TextSize               = Info.TitleSize or 16,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+            TextTruncate           = Enum.TextTruncate.AtEnd,
+            TextWrapped            = false,
+            Parent                 = Holder,
         })
-        Canvas.Holder, Canvas.Layer = Holder, Layer
-        local function Track(Drawing)
-            table.insert(Canvas.Drawings, Drawing)
-            return Drawing
-        end
-        function Canvas:AddFrame(DrawingInfo)
-            DrawingInfo = DrawingInfo or {}
-            local Drawing = New("Frame", {
-                BackgroundColor3 = DrawingInfo.BackgroundColor3 or DrawingInfo.Color or "AccentColor",
-                BackgroundTransparency = DrawingInfo.BackgroundTransparency or DrawingInfo.Transparency or 0,
-                BorderSizePixel = 0,
-                Position = DrawingInfo.Position or UDim2.fromOffset(0, 0),
-                Size = DrawingInfo.Size or UDim2.fromOffset(10, 10),
-                ZIndex = DrawingInfo.ZIndex or 1,
-                Parent = Layer,
+        local Description = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Position               = UDim2.fromOffset(Icon and 32 or 0, 24),
+            Size                   = UDim2.new(1, Icon and -32 or 0, 1, -24),
+            Text                   = Panel.Description,
+            TextSize               = Info.DescriptionSize or 13,
+            TextTransparency       = 0.25,
+            TextWrapped            = true,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+            TextYAlignment         = Enum.TextYAlignment.Top,
+            Parent                 = Holder,
+        })
+
+        if Info.Badge then
+            local Badge = New("TextLabel", {
+                AnchorPoint          = Vector2.new(1, 0),
+                AutomaticSize        = Enum.AutomaticSize.X,
+                BackgroundColor3     = Accent,
+                BackgroundTransparency = 0.25,
+                Position             = UDim2.new(1, 0, 0, 0),
+                Size                 = UDim2.fromOffset(0, 18),
+                Text                 = tostring(Info.Badge),
+                TextSize             = 12,
+                Parent               = Holder,
             })
-            if DrawingInfo.CornerRadius then
-                table.insert(Library.Corners, New("UICorner", {
-                    CornerRadius = UDim.new(0, DrawingInfo.CornerRadius),
-                    Parent = Drawing,
-                }))
-            end
-            return Track(Drawing)
+            New("UIPadding", { PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 7), Parent = Badge })
+            table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Badge }))
         end
-        function Canvas:AddLine(DrawingInfo)
-            DrawingInfo = DrawingInfo or {}
-            return Canvas:AddFrame({
-                BackgroundColor3 = DrawingInfo.BackgroundColor3 or DrawingInfo.Color or "OutlineColor",
-                BackgroundTransparency = DrawingInfo.BackgroundTransparency or DrawingInfo.Transparency or 0,
-                Position = DrawingInfo.Position,
-                Size = DrawingInfo.Size or UDim2.fromOffset(1, 1),
-                ZIndex = DrawingInfo.ZIndex or 1,
-            })
-        end
-        function Canvas:AddText(DrawingInfo)
-            DrawingInfo = DrawingInfo or {}
-            return Track(New("TextLabel", {
-                BackgroundTransparency = 1,
-                Position = DrawingInfo.Position or UDim2.fromOffset(0, 0),
-                Size = DrawingInfo.Size or UDim2.new(1, 0, 0, 18),
-                Text = tostring(DrawingInfo.Text or ""),
-                TextColor3 = DrawingInfo.TextColor3 or DrawingInfo.Color or "FontColor",
-                TextSize = DrawingInfo.TextSize or 14,
-                TextTransparency = DrawingInfo.TextTransparency or 0,
-                TextXAlignment = DrawingInfo.TextXAlignment or Enum.TextXAlignment.Left,
-                TextYAlignment = DrawingInfo.TextYAlignment or Enum.TextYAlignment.Center,
-                ZIndex = DrawingInfo.ZIndex or 2,
-                Parent = Layer,
-            }))
-        end
-        function Canvas:AddImage(DrawingInfo)
-            DrawingInfo = DrawingInfo or {}
-            local Image = DrawingInfo.Image or DrawingInfo.Url or ""
-            if tonumber(Image) then
-                Image = string.format("rbxassetid://%s", tostring(Image))
-            elseif IsHttpUrl(Image) then
-                Image = Library:DownloadImage(Image, { AssetName = "CanvasImage_" .. HashString(Image) })
-            end
-            local Drawing = New("ImageLabel", {
-                BackgroundTransparency = 1,
-                Image = tostring(Image),
-                ImageColor3 = DrawingInfo.ImageColor3 or DrawingInfo.Color or Color3.new(1, 1, 1),
-                ImageTransparency = DrawingInfo.ImageTransparency or DrawingInfo.Transparency or 0,
-                Position = DrawingInfo.Position or UDim2.fromOffset(0, 0),
-                Size = DrawingInfo.Size or UDim2.fromOffset(32, 32),
-                ScaleType = DrawingInfo.ScaleType or Enum.ScaleType.Fit,
-                ZIndex = DrawingInfo.ZIndex or 2,
-                Parent = Layer,
-            })
-            if DrawingInfo.CornerRadius then
-                table.insert(Library.Corners, New("UICorner", {
-                    CornerRadius = UDim.new(0, DrawingInfo.CornerRadius),
-                    Parent = Drawing,
-                }))
-            end
-            return Track(Drawing)
-        end
-        function Canvas:Clear()
-            for _, Drawing in ipairs(Canvas.Drawings) do
-                if Drawing and Drawing.Parent then Drawing:Destroy() end
-            end
-            table.clear(Canvas.Drawings)
-        end
-        function Canvas:SetHeight(NewHeight)
-            Canvas.Height = math.max(32, tonumber(NewHeight) or Canvas.Height)
-            Holder.Size = UDim2.new(1, 0, 0, Canvas.Height)
-            if Groupbox.Resize then Groupbox:Resize() end
-        end
-        function Canvas:SetVisible(Visible)
-            Canvas.Visible = Visible ~= false
-            Holder.Visible = Canvas.Visible
-        end
-        if Groupbox.Elements then table.insert(Groupbox.Elements, Canvas) end
-        if Groupbox.Resize then Groupbox:Resize() end
-        return Canvas
-    end
 
-    function Funcs:AddGraph(Idx, Info)
-        if typeof(Idx) == "table" then Info = Idx; Idx = Info.Idx end
-        Info = Info or {}
-        local LineThickness = Info.LineThickness or 3
-        local PointSize = Info.PointSize or 5
-        local Canvas = self:AddCanvas({
-            Height = Info.Height or 150,
-            BackgroundTransparency = Info.BackgroundTransparency or 0.08,
-            CornerRadius = Info.CornerRadius,
-        })
-        local Graph = { Canvas = Canvas, Values = typeof(Info.Values) == "table" and table.clone(Info.Values) or {}, Type = "Graph" }
-        local function DrawGraph()
-            local Values = Graph.Values
-            Canvas:Clear()
-            Canvas:AddText({ Text = Info.Title or "Graph", Position = UDim2.fromOffset(10, 7), Size = UDim2.new(1, -20, 0, 18), TextSize = 14, ZIndex = 3 })
-            local Size = Canvas.Layer.AbsoluteSize
-            if Size.X <= 1 or Size.Y <= 1 then
-                task.defer(function()
-                    if Canvas.Layer and Canvas.Layer.AbsoluteSize.X > 1 then DrawGraph() end
-                end)
-                return
-            end
-            local Padding = Info.Padding or 14
-            local TopPadding = Padding + 18
-            local Width = math.max(1, Size.X - Padding * 2)
-            local Height = math.max(1, Size.Y - TopPadding - Padding)
-            local GridLines = math.max(2, Info.GridLines or 4)
-            for Index = 0, GridLines do
-                local Alpha = Index / GridLines
-                Canvas:AddLine({
-                    BackgroundColor3 = Info.GridColor or "OutlineColor",
-                    BackgroundTransparency = Index == GridLines and 0.34 or 0.76,
-                    Position = UDim2.fromOffset(Padding, TopPadding + Height * Alpha),
-                    Size = UDim2.fromOffset(Width, 1),
-                    ZIndex = 1,
-                })
-            end
-            if #Values == 0 then
-                Canvas:AddText({ Text = "No data", Position = UDim2.fromOffset(Padding, TopPadding), Size = UDim2.fromOffset(Width, Height), TextTransparency = 0.45, TextXAlignment = Enum.TextXAlignment.Center })
-                return
-            end
-            local MinValue, MaxValue = Values[1], Values[1]
-            for _, Value in ipairs(Values) do
-                local N = tonumber(Value) or 0
-                MinValue, MaxValue = math.min(MinValue, N), math.max(MaxValue, N)
-            end
-            if MinValue == MaxValue then MinValue -= 1; MaxValue += 1 end
-            local function PointAt(Index, Value)
-                local X = Padding + ((Index - 1) / math.max(1, #Values - 1)) * Width
-                local Y = TopPadding + Height * (1 - ((tonumber(Value) or 0) - MinValue) / (MaxValue - MinValue))
-                return X, Y
-            end
-            for Index = 1, #Values - 1 do
-                local X1, Y1 = PointAt(Index, Values[Index])
-                local X2, Y2 = PointAt(Index + 1, Values[Index + 1])
-                local DX, DY = X2 - X1, Y2 - Y1
-                local Len = math.max(1, math.sqrt(DX * DX + DY * DY))
-                local Angle = math.deg(math.atan2(DY, DX))
-                local Line = Canvas:AddFrame({
-                    BackgroundColor3 = Info.LineColor or "AccentColor",
-                    Position = UDim2.fromOffset(X1, Y1),
-                    Size = UDim2.fromOffset(Len, LineThickness),
-                    ZIndex = 2,
-                    CornerRadius = 2,
-                })
-                Line.Rotation = Angle
-                Line.AnchorPoint = Vector2.new(0, 0.5)
-            end
-            for Index, Value in ipairs(Values) do
-                local X, Y = PointAt(Index, Value)
-                Canvas:AddFrame({
-                    BackgroundColor3 = Info.PointColor or "FontColor",
-                    Position = UDim2.fromOffset(X - PointSize / 2, Y - PointSize / 2),
-                    Size = UDim2.fromOffset(PointSize, PointSize),
-                    ZIndex = 3,
-                    CornerRadius = PointSize,
-                })
-            end
+        function Panel:SetTitle(Text)
+            Panel.Title = tostring(Text)
+            Panel.Text  = Panel.Title
+            Title.Text  = Panel.Title
         end
-        function Graph:SetValues(Values)
-            Graph.Values = typeof(Values) == "table" and table.clone(Values) or {}
-            DrawGraph()
-        end
-        function Graph:SetVisible(Visible) Canvas:SetVisible(Visible) end
-        function Graph:SetHeight(Height) Canvas:SetHeight(Height); task.defer(DrawGraph) end
-        task.defer(DrawGraph)
-        Canvas.Layer:GetPropertyChangedSignal("AbsoluteSize"):Connect(DrawGraph)
-        return Graph
-    end
 
-    function Funcs:AddPlayerCard(Idx, Info)
-        if typeof(Idx) == "table" then Info = Idx; Idx = Info.Idx end
-        Info = Info or {}
-        local Canvas = self:AddCanvas({ Height = Info.Height or 112, BackgroundTransparency = Info.BackgroundTransparency or 0.1 })
-        local Card = { Canvas = Canvas, Player = Info.Player or LocalPlayer, Type = "PlayerCard" }
-        local function Thumb(Player)
-            if typeof(Player) == "Instance" and Player:IsA("Player") then
-                local ok, t = pcall(function()
-                    return Players:GetUserThumbnailAsync(Player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
-                end)
-                return ok and t or string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", Player.UserId)
-            end
-            local id = typeof(Player) == "table" and tonumber(Player.UserId or Player.userId)
-            return id and string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", id) or (Info.Thumbnail or "")
+        function Panel:SetDescription(Text)
+            Panel.Description = tostring(Text)
+            Description.Text  = Panel.Description
         end
-        local function Field(Player, Key, Default)
-            if typeof(Player) == "Instance" and Player:IsA("Player") then return Player[Key] or Default end
-            if typeof(Player) == "table" then return Player[Key] or Player[Key:lower()] or Default end
-            return Default
-        end
-        local function Refresh()
-            local P = Card.Player
-            local Name = tostring(Field(P, "Name", "Player"))
-            local Display = tostring(Field(P, "DisplayName", Name))
-            local UserId = tonumber(Field(P, "UserId", 0)) or 0
-            local Age = tonumber(Field(P, "AccountAge", 0)) or 0
-            local Team = Field(P, "Team", nil)
-            local TeamName = Team and tostring(Team.Name or Team) or "No team"
-            Canvas:Clear()
-            Canvas:AddImage({ Image = Thumb(P), Position = UDim2.fromOffset(12, 16), Size = UDim2.fromOffset(72, 72), CornerRadius = 8, ZIndex = 2 })
-            Canvas:AddText({ Text = Display, Position = UDim2.fromOffset(98, 18), Size = UDim2.new(1, -110, 0, 20), TextSize = 16, ZIndex = 2 })
-            Canvas:AddText({ Text = "@" .. Name, Position = UDim2.fromOffset(98, 40), Size = UDim2.new(1, -110, 0, 16), TextTransparency = 0.35, TextSize = 13, ZIndex = 2 })
-            Canvas:AddText({ Text = string.format("Id %d · Age %d · %s", UserId, Age, TeamName), Position = UDim2.fromOffset(98, 64), Size = UDim2.new(1, -110, 0, 16), TextTransparency = 0.25, TextSize = 12, ZIndex = 2 })
-        end
-        function Card:SetPlayer(Player) Card.Player = Player or LocalPlayer; Refresh() end
-        function Card:Refresh() Refresh() end
-        function Card:SetVisible(V) Canvas:SetVisible(V) end
-        task.defer(Refresh)
-        return Card
-    end
 
-    function Funcs:AddTopUserBox(Idx, Info)
-        if typeof(Idx) == "table" then Info = Idx; Idx = Info.Idx end
-        Info = Info or {}
-        local Groupbox, Container = self, self.Container
-        local Height = math.max(40, tonumber(Info.Height) or 52)
-        local Box = { Player = Info.Player or LocalPlayer, Visible = Info.Visible ~= false, Type = "TopUserBox" }
-        local Holder = New("Frame", {
-            BackgroundColor3 = "MainColor", BackgroundTransparency = 0.08,
-            Size = UDim2.new(1, 0, 0, Height), Visible = Box.Visible, Parent = Container,
-        })
-        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(0, Library.CornerRadius), Parent = Holder }))
-        Library:AddOutline(Holder)
-        local Avatar = New("ImageLabel", {
-            BackgroundTransparency = 1, Position = UDim2.fromOffset(8, (Height - 36) / 2),
-            Size = UDim2.fromOffset(36, 36), Parent = Holder,
-        })
-        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Avatar }))
-        local NameLabel = New("TextLabel", {
-            BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 6), Size = UDim2.new(1, -60, 0, 20),
-            Text = "", TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, Parent = Holder,
-        })
-        local SubLabel = New("TextLabel", {
-            BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 26), Size = UDim2.new(1, -60, 0, 16),
-            Text = "", TextSize = 12, TextTransparency = 0.4, TextXAlignment = Enum.TextXAlignment.Left, Parent = Holder,
-        })
-        local function Refresh()
-            local P = Box.Player
-            local Name, Display = "Player", "Player"
-            if typeof(P) == "Instance" and P:IsA("Player") then
-                Name, Display = P.Name, P.DisplayName
-                local ok, t = pcall(function()
-                    return Players:GetUserThumbnailAsync(P.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
-                end)
-                Avatar.Image = ok and t or string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=48&h=48", P.UserId)
-            end
-            NameLabel.Text = Display
-            SubLabel.Text = "@" .. Name
+        function Panel:SetVisible(Visible)
+            Panel.Visible  = Visible
+            Holder.Visible = Visible
+            Groupbox:Resize()
         end
-        function Box:SetPlayer(P) Box.Player = P or LocalPlayer; Refresh() end
-        function Box:SetVisible(V) Box.Visible = V ~= false; Holder.Visible = Box.Visible end
-        function Box:Refresh() Refresh() end
-        Box.Holder = Holder
-        Refresh()
-        if Groupbox.Resize then Groupbox:Resize() end
-        return Box
-    end
 
-    function Funcs:AddSprite(Idx, Info)
-        if typeof(Idx) == "table" then Info = Idx; Idx = Info.Idx end
-        Info = Info or {}
-        local Groupbox, Container = self, self.Container
-        local Height = math.max(24, tonumber(Info.Height) or 64)
-        local Sprite = { Image = Info.Image or Info.Url or "", Visible = Info.Visible ~= false, Type = "Sprite" }
-        local Holder = New("Frame", {
-            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, Height), Visible = Sprite.Visible, Parent = Container,
-        })
-        local ImageObject = New("ImageLabel", {
-            BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.fromScale(0.5, 0.5), Size = Info.Size or UDim2.fromOffset(Height - 8, Height - 8),
-            Image = "", Parent = Holder,
-        })
-        local function Apply(Image)
-            if tonumber(Image) then
-                ImageObject.Image = string.format("rbxassetid://%s", tostring(Image))
-            elseif IsHttpUrl(tostring(Image)) then
-                ImageObject.Image = Library:DownloadImage(tostring(Image), { AssetName = "Sprite_" .. HashString(tostring(Image)) })
-            else
-                local Icon = Library:GetCustomIcon(tostring(Image))
-                if Icon then
-                    ImageObject.Image = Icon.Url
-                    ImageObject.ImageRectOffset = Icon.ImageRectOffset
-                    ImageObject.ImageRectSize = Icon.ImageRectSize
-                else
-                    ImageObject.Image = tostring(Image or "")
-                end
-            end
-        end
-        function Sprite:SetImage(I) Sprite.Image = I; Apply(I) end
-        function Sprite:SetVisible(V) Sprite.Visible = V ~= false; Holder.Visible = Sprite.Visible end
-        function Sprite:SetHeight(H)
-            Height = math.max(24, tonumber(H) or Height)
-            Holder.Size = UDim2.new(1, 0, 0, Height)
-            ImageObject.Size = UDim2.fromOffset(Height - 8, Height - 8)
-            if Groupbox.Resize then Groupbox:Resize() end
-        end
-        function Sprite:Play() end
-        function Sprite:Stop() end
-        Sprite.Holder, Sprite.ImageObject = Holder, ImageObject
-        Apply(Sprite.Image)
-        if Groupbox.Resize then Groupbox:Resize() end
-        return Sprite
-    end
-
-    function Funcs:AddHighlightButton(Info)
-        Info = typeof(Info) == "table" and Info or { Text = tostring(Info or "Button") }
-        return self:AddButton({
-            Text = Info.Text or "Highlight",
-            Func = Info.Func or Info.Callback,
-            Tooltip = Info.Tooltip,
-            Risky = Info.Risky,
-            Disabled = Info.Disabled,
-            Visible = Info.Visible,
-        })
-    end
-
-    function Funcs:AddShinyButton(Info)
-        return self:AddHighlightButton(typeof(Info) == "table" and Info or { Text = tostring(Info or "Button") })
+        Panel.Holder = Holder
+        table.insert(Groupbox.Elements, Panel)
+        if Idx then Options[Idx] = Panel end
+        Groupbox:Resize()
+        return Panel
     end
 
     function Funcs:AddDependencyBox()
@@ -9791,54 +9618,6 @@ function Library:SetNotifySide(Side: string)
     Library:UpdateNotificationPositions(true)
 end
 
-
-local function IsHttpUrl(Value)
-    return typeof(Value) == "string" and Value:match("^https?://") ~= nil
-end
-
-local function HashString(Value: string): string
-    local Hash = 2166136261
-    for Index = 1, #Value do
-        Hash = bit32.bxor(Hash, string.byte(Value, Index))
-        Hash = (Hash * 16777619) % 4294967296
-    end
-    return string.format("%08x", Hash)
-end
-
-function Library:DownloadImage(Url: string, Info)
-    Info = typeof(Info) == "table" and Info or {}
-    if typeof(Url) ~= "string" or Url == "" then
-        return ""
-    end
-    if tonumber(Url) then
-        return string.format("rbxassetid://%s", tostring(Url))
-    end
-    if not IsHttpUrl(Url) then
-        return Url
-    end
-    if not (writefile and isfile and getcustomasset) then
-        return Url
-    end
-    local Folder = Info.Folder or "Obsidian/downloads"
-    local Name = Info.AssetName or ("img_" .. HashString(Url))
-    local Path = string.format("%s/%s.png", Folder, Name)
-    if isfolder and makefolder then
-        local cur = ""
-        for seg in Folder:gmatch("[^/]+") do
-            cur ..= seg
-            if not isfolder(cur) then makefolder(cur) end
-            cur ..= "/"
-        end
-    end
-    if Info.ForceRedownload == true or not isfile(Path) then
-        pcall(function()
-            writefile(Path, game:HttpGet(Url))
-        end)
-    end
-    local ok, asset = pcall(getcustomasset, Path)
-    return (ok and asset) or Url
-end
-
 function Library:Notify(...)
     local Data = {}
     local Info = select(1, ...)
@@ -10178,71 +9957,6 @@ function Library:Notify(...)
     end)
 
     return Data
-end
-
-
-function Library:NotifyInfo(Info, Time, SoundId)
-    if typeof(Info) == "table" then
-        return Library:Notify({
-            Title = Info.Title or "Info",
-            Description = Info.Description or tostring(Info),
-            Time = Info.Time or Time,
-            SoundId = Info.SoundId or SoundId,
-            Icon = Info.Icon or "info",
-        })
-    end
-    return Library:Notify({ Title = "Info", Description = tostring(Info), Time = Time, SoundId = SoundId, Icon = "info" })
-end
-
-function Library:NotifySuccess(Info, Time, SoundId)
-    if typeof(Info) == "table" then
-        return Library:Notify({
-            Title = Info.Title or "Success",
-            Description = Info.Description or tostring(Info),
-            Time = Info.Time or Time,
-            SoundId = Info.SoundId or SoundId,
-            Icon = Info.Icon or "circle-check",
-            TitleColor = Info.TitleColor or Color3.fromRGB(80, 200, 120),
-        })
-    end
-    return Library:Notify({
-        Title = "Success", Description = tostring(Info), Time = Time, SoundId = SoundId,
-        Icon = "circle-check", TitleColor = Color3.fromRGB(80, 200, 120),
-    })
-end
-
-function Library:NotifyWarning(Info, Time, SoundId)
-    if typeof(Info) == "table" then
-        return Library:Notify({
-            Title = Info.Title or "Warning",
-            Description = Info.Description or tostring(Info),
-            Time = Info.Time or Time,
-            SoundId = Info.SoundId or SoundId,
-            Icon = Info.Icon or "triangle-alert",
-            TitleColor = Info.TitleColor or Color3.fromRGB(255, 180, 50),
-        })
-    end
-    return Library:Notify({
-        Title = "Warning", Description = tostring(Info), Time = Time, SoundId = SoundId,
-        Icon = "triangle-alert", TitleColor = Color3.fromRGB(255, 180, 50),
-    })
-end
-
-function Library:NotifyError(Info, Time, SoundId)
-    if typeof(Info) == "table" then
-        return Library:Notify({
-            Title = Info.Title or "Error",
-            Description = Info.Description or tostring(Info),
-            Time = Info.Time or Time,
-            SoundId = Info.SoundId or SoundId,
-            Icon = Info.Icon or "circle-x",
-            TitleColor = Info.TitleColor or Color3.fromRGB(255, 80, 80),
-        })
-    end
-    return Library:Notify({
-        Title = "Error", Description = tostring(Info), Time = Time, SoundId = SoundId,
-        Icon = "circle-x", TitleColor = Color3.fromRGB(255, 80, 80),
-    })
 end
 
 function Library:CreateWindow(WindowInfo)
@@ -14572,123 +14286,6 @@ function Library:CreateWindow(WindowInfo)
         return Dialog
     end
 
-    --// Password / premium key dialog
-    -- Uses the library's existing dialog, input, toggle, and footer button
-    -- constructors so it matches the Obsidian window exactly.
-    function Window:AddPasswordDialog(Idx, Info)
-        Info = typeof(Info) == "table" and Info or {}
-        local PasswordInput
-        local RememberToggle
-        local ErrorLabel
-
-        local Dialog = Window:AddDialog(Idx, {
-            Title = Info.Title or "Private Tab",
-            Description = Info.Description or "Enter the password to unlock this feature",
-            Icon = Info.Icon or "lock-keyhole",
-            AutoDismiss = false,
-            OutsideClickDismiss = Info.OutsideClickDismiss == true,
-            FooterButtons = {
-                Cancel = {
-                    Title = Info.CancelText or "Cancel",
-                    Variant = "Secondary",
-                    Order = 1,
-                    Callback = function(CurrentDialog)
-                        Library:SafeCallback(Info.OnCancel, CurrentDialog)
-                        CurrentDialog:Dismiss()
-                    end,
-                },
-                Proceed = {
-                    Title = Info.ProceedText or "Proceed",
-                    Variant = "Success",
-                    Order = 2,
-                    Callback = function(CurrentDialog)
-                        local Value = PasswordInput and PasswordInput.Value or ""
-                        local Remember = RememberToggle and RememberToggle.Value or false
-                        local Valid = true
-                        if typeof(Info.Verify) == "function" then
-                            Valid = Info.Verify(Value, Remember) == true
-                        elseif typeof(Info.Password) == "string" then
-                            Valid = Value == Info.Password
-                        elseif typeof(Info.Key) == "string" then
-                            Valid = Value == Info.Key
-                        end
-                        if not Valid then
-                            ErrorLabel.Text = Info.ErrorText or "Incorrect password"
-                            ErrorLabel.Visible = true
-                            CurrentDialog:Resize()
-                            return
-                        end
-                        Library:SafeCallback(Info.Callback, Value, Remember, CurrentDialog)
-                        CurrentDialog:Dismiss()
-                    end,
-                },
-            },
-        })
-
-        PasswordInput = Dialog:AddInput("Password", {
-            Text = Info.InputLabel or "Password",
-            Placeholder = Info.Placeholder or "Password",
-            Default = Info.Default or "",
-            AllowEmpty = true,
-            Finished = false,
-        })
-        local PasswordBox = PasswordInput.Holder:FindFirstChildWhichIsA("TextBox")
-        local PasswordVisible = false
-        local ShowButton = New("TextButton", {
-            Active = true,
-            AnchorPoint = Vector2.new(1, 0.5),
-            BackgroundTransparency = 1,
-            Position = UDim2.new(1, -6, 1, -10),
-            Size = UDim2.fromOffset(20, 20),
-            Text = "",
-            ZIndex = PasswordBox.ZIndex + 3,
-            Parent = PasswordInput.Holder,
-        })
-        local EyeIcon = Library:GetCustomIcon("eye")
-        local ShowImage = New("ImageLabel", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundTransparency = 1,
-            Image = EyeIcon and EyeIcon.Url or "",
-            ImageColor3 = "FontColor",
-            ImageRectOffset = EyeIcon and EyeIcon.ImageRectOffset or Vector2.zero,
-            ImageRectSize = EyeIcon and EyeIcon.ImageRectSize or Vector2.zero,
-            Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(16, 16),
-            Parent = ShowButton,
-        })
-        ShowButton.MouseButton1Click:Connect(function()
-            PasswordVisible = not PasswordVisible
-            PasswordBox.TextTransparency = PasswordVisible and 0 or 1
-            local Icon = Library:GetCustomIcon(PasswordVisible and "eye-off" or "eye")
-            if Icon then
-                ShowImage.Image = Icon.Url
-                ShowImage.ImageRectOffset = Icon.ImageRectOffset
-                ShowImage.ImageRectSize = Icon.ImageRectSize
-            end
-        end)
-
-        RememberToggle = Dialog:AddToggle("RememberPassword", {
-            Text = Info.RememberText or "Remember me",
-            Default = Info.Remember == true,
-        })
-        ErrorLabel = New("TextLabel", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 14),
-            Text = "",
-            TextColor3 = Info.ErrorColor or Color3.fromRGB(235, 86, 86),
-            TextSize = 12,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Visible = false,
-            Parent = Dialog.Container,
-        })
-        Dialog.PasswordInput = PasswordInput
-        Dialog.RememberToggle = RememberToggle
-        Dialog.ErrorLabel = ErrorLabel
-        Dialog.ShowPasswordButton = ShowButton
-        Dialog:Resize()
-        return Dialog
-    end
-
     local GuiProperties = { "BackgroundTransparency" }
     local ImageProperties = { "BackgroundTransparency", "ImageTransparency" }
     local TextProperties = { "BackgroundTransparency", "TextTransparency" }
@@ -14722,6 +14319,134 @@ function Library:CreateWindow(WindowInfo)
         if MiniFrame then
             MiniFrame.Visible = Library.Toggled and Minimized
         end
+    end
+
+    --// Password dialog \\--
+    function Window:AddPasswordDialog(Idx, Info)
+        Info = typeof(Info) == "table" and Info or {}
+        local PasswordInput
+        local RememberToggle
+        local ErrorLabel
+
+        local Dialog = Window:AddDialog(Idx, {
+            Title       = Info.Title or "Private Tab",
+            Description = Info.Description or "Enter the password to unlock this feature",
+            Icon        = Info.Icon or "lock-keyhole",
+            AutoDismiss = false,
+            OutsideClickDismiss = Info.OutsideClickDismiss == true,
+            FooterButtons = {
+                Cancel = {
+                    Title    = Info.CancelText or "Cancel",
+                    Variant  = "Secondary",
+                    Order    = 1,
+                    Callback = function(CurrentDialog)
+                        Library:SafeCallback(Info.OnCancel, CurrentDialog)
+                        CurrentDialog:Dismiss()
+                    end,
+                },
+                Proceed = {
+                    Title    = Info.ProceedText or "Proceed",
+                    Variant  = "Success",
+                    Order    = 2,
+                    Callback = function(CurrentDialog)
+                        local Value   = PasswordInput and PasswordInput.Value or ""
+                        local Remember = RememberToggle and RememberToggle.Value or false
+                        local Valid   = true
+                        if typeof(Info.Verify) == "function" then
+                            Valid = Info.Verify(Value, Remember) == true
+                        elseif typeof(Info.Password) == "string" then
+                            Valid = Value == Info.Password
+                        elseif typeof(Info.Key) == "string" then
+                            Valid = Value == Info.Key
+                        end
+                        if not Valid then
+                            ErrorLabel.Text    = Info.ErrorText or "Incorrect password"
+                            ErrorLabel.Visible = true
+                            CurrentDialog:Resize()
+                            return
+                        end
+                        Library:SafeCallback(Info.Callback, Value, Remember, CurrentDialog)
+                        CurrentDialog:Dismiss()
+                    end,
+                },
+            },
+        })
+
+        PasswordInput = Dialog:AddInput("Password", {
+            Text        = Info.InputLabel or "Password",
+            Placeholder = Info.Placeholder or "Password",
+            Default     = Info.Default or "",
+            AllowEmpty  = true,
+            Finished    = false,
+        })
+
+        --// Show/hide password toggle button \\--
+        local PasswordBox = PasswordInput.Holder:FindFirstChildWhichIsA("TextBox")
+        local PasswordVisible = false
+
+        local ShowButton = New("TextButton", {
+            Active               = true,
+            AnchorPoint          = Vector2.new(1, 0.5),
+            BackgroundTransparency = 1,
+            Position             = UDim2.new(1, -6, 1, -10),
+            Size                 = UDim2.fromOffset(20, 20),
+            Text                 = "",
+            ZIndex               = PasswordBox and (PasswordBox.ZIndex + 3) or 5,
+            Parent               = PasswordInput.Holder,
+        })
+
+        local EyeIcon = Library:GetCustomIcon("eye")
+        local ShowImage = New("ImageLabel", {
+            AnchorPoint          = Vector2.new(0.5, 0.5),
+            BackgroundTransparency = 1,
+            Image                = EyeIcon and EyeIcon.Url or "",
+            ImageColor3          = "FontColor",
+            ImageRectOffset      = EyeIcon and EyeIcon.ImageRectOffset or Vector2.zero,
+            ImageRectSize        = EyeIcon and EyeIcon.ImageRectSize or Vector2.zero,
+            Position             = UDim2.fromScale(0.5, 0.5),
+            Size                 = UDim2.fromOffset(16, 16),
+            Parent               = ShowButton,
+        })
+
+        if PasswordBox then
+            PasswordBox.TextTransparency = 1
+        end
+
+        ShowButton.MouseButton1Click:Connect(function()
+            PasswordVisible = not PasswordVisible
+            if PasswordBox then
+                PasswordBox.TextTransparency = PasswordVisible and 0 or 1
+            end
+            local Icon = Library:GetCustomIcon(PasswordVisible and "eye-off" or "eye")
+            if Icon and ShowImage then
+                ShowImage.Image             = Icon.Url
+                ShowImage.ImageRectOffset   = Icon.ImageRectOffset
+                ShowImage.ImageRectSize     = Icon.ImageRectSize
+            end
+        end)
+
+        RememberToggle = Dialog:AddToggle("RememberPassword", {
+            Text    = Info.RememberText or "Remember me",
+            Default = Info.Remember == true,
+        })
+
+        ErrorLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size                   = UDim2.new(1, 0, 0, 14),
+            Text                   = "",
+            TextColor3             = Info.ErrorColor or Color3.fromRGB(235, 86, 86),
+            TextSize               = 12,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+            Visible                = false,
+            Parent                 = Dialog.Container,
+        })
+
+        Dialog.PasswordInput      = PasswordInput
+        Dialog.RememberToggle     = RememberToggle
+        Dialog.ErrorLabel         = ErrorLabel
+        Dialog.ShowPasswordButton = ShowButton
+        Dialog:Resize()
+        return Dialog
     end
 
     function Window:Toggle(Value: boolean?)
@@ -15962,6 +15687,38 @@ function Library:CreateArqelKeySystem(Info)
     local key = getgenv().SCRIPT_KEY
     if not key then warn("[Obsidian] Arqel key system closed without valid key") end
     return key
+end
+
+function Library:NotifyInfo(Info, Time, SoundId)
+    if typeof(Info) == "table" then
+        Info.Type = Info.Type or "Info"
+        return Library:Notify(Info)
+    end
+    return Library:Notify({ Type = "Info", Description = tostring(Info), Time = Time, SoundId = SoundId })
+end
+
+function Library:NotifySuccess(Info, Time, SoundId)
+    if typeof(Info) == "table" then
+        Info.Type = Info.Type or "Success"
+        return Library:Notify(Info)
+    end
+    return Library:Notify({ Type = "Success", Description = tostring(Info), Time = Time, SoundId = SoundId })
+end
+
+function Library:NotifyWarning(Info, Time, SoundId)
+    if typeof(Info) == "table" then
+        Info.Type = Info.Type or "Warning"
+        return Library:Notify(Info)
+    end
+    return Library:Notify({ Type = "Warning", Description = tostring(Info), Time = Time, SoundId = SoundId })
+end
+
+function Library:NotifyError(Info, Time, SoundId)
+    if typeof(Info) == "table" then
+        Info.Type = Info.Type or "Error"
+        return Library:Notify(Info)
+    end
+    return Library:Notify({ Type = "Error", Description = tostring(Info), Time = Time, SoundId = SoundId })
 end
 
 function Library:Unload()
