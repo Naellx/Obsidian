@@ -214,7 +214,7 @@ local Library = {
     --// Stay fully rounded, but square off with everything else at radius 0
     PillCorners = {},
 
-    --// Animations \\--
+    --// Animations \--
     TweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 
     TabTransitionInfo = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -2036,6 +2036,13 @@ function Library:AddBlank(Frame: GuiObject, Size: UDim2)
 end
 
 --// Animations \\--
+function Library:SetGlow(State: boolean)
+    assert(typeof(State) == "boolean", "Expected boolean for State, got: " .. typeof(State))
+    if self.Window and self.Window.Glow then
+        self.Window.Glow.Visible = State
+    end
+end
+
 local TransparencyCache = {}
 local ActiveTabTweens = setmetatable({}, { __mode = "k" })
 local SUBTAB_BAR_HEIGHT = 32
@@ -4969,6 +4976,153 @@ do
         end
 
         return Label
+    end
+
+    function Funcs:AddHoldButton(...)
+        if self.Destroyed then return nil end
+
+        local function GetInfo(...)
+            local Info = {}
+            local First = select(1, ...)
+            local Second = select(2, ...)
+
+            if typeof(First) == "table" or typeof(Second) == "table" then
+                local Params = typeof(First) == "table" and First or Second
+                Info.Text = Params.Text or ""
+                Info.Func = Params.Func or Params.Callback or function() end
+                Info.HoldTime = Params.HoldTime or Params.Time or 1
+                Info.Tooltip = Params.Tooltip
+                Info.DisabledTooltip = Params.DisabledTooltip
+                Info.Risky = Params.Risky or false
+                Info.Disabled = Params.Disabled or false
+                Info.Visible = Params.Visible or true
+                Info.Idx = typeof(Second) == "table" and First or nil
+            else
+                Info.Text = First or ""
+                Info.Func = Second or function() end
+                Info.HoldTime = select(3, ...) or 1
+                Info.Tooltip = nil
+                Info.DisabledTooltip = nil
+                Info.Risky = false
+                Info.Disabled = false
+                Info.Visible = true
+                Info.Idx = nil
+            end
+            return Info
+        end
+
+        local Info = GetInfo(...)
+        local Groupbox = self
+        local Container = Groupbox.Container
+
+        local HoldButton = {
+            Connections = {},
+            Destroyed = false,
+            Text = Info.Text,
+            Func = Info.Func,
+            HoldTime = Info.HoldTime,
+            Tooltip = Info.Tooltip,
+            DisabledTooltip = Info.DisabledTooltip,
+            TooltipTable = nil,
+            Risky = Info.Risky,
+            Disabled = Info.Disabled,
+            Visible = Info.Visible,
+            Tween = nil,
+            Type = "HoldButton",
+        }
+
+        local Holder = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 21),
+            Parent = Container,
+        })
+
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalFlex = Enum.UIFlexAlignment.Fill,
+            Padding = UDim.new(0, 9),
+            Parent = Holder,
+        })
+
+        local Base = New("TextButton", {
+            Active = not HoldButton.Disabled,
+            BackgroundColor3 = HoldButton.Disabled and "BackgroundColor" or "MainColor",
+            Size = UDim2.fromScale(1, 1),
+            Text = HoldButton.Text,
+            TextSize = 14,
+            TextTransparency = 0.4,
+            Visible = HoldButton.Visible,
+            ClipsDescendants = true,
+            Parent = Holder,
+        })
+
+        local FillBar = New("Frame", {
+            BackgroundColor3 = "AccentColor",
+            BackgroundTransparency = 0.3,
+            Size = UDim2.new(0, 0, 1, 0),
+            ZIndex = Base.ZIndex,
+            Parent = Base,
+        })
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+                Parent = FillBar,
+            })
+        )
+
+        local Stroke = New("UIStroke", {
+            Color = "OutlineColor",
+            Transparency = HoldButton.Disabled and 0.5 or 0,
+            Parent = Base,
+        })
+
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, Library.CornerRadius / 2),
+                Parent = Base,
+            })
+        )
+
+        local Holding = false
+        local HoldTween = nil
+
+        Base.MouseButton1Down:Connect(function()
+            if HoldButton.Disabled or HoldButton.Locked then return end
+            Holding = true
+            FillBar.Size = UDim2.new(0, 0, 1, 0)
+            HoldTween = TweenService:Create(FillBar, TweenInfo.new(HoldButton.HoldTime, Enum.EasingStyle.Linear), {Size = UDim2.new(1, 0, 1, 0)})
+            HoldTween:Play()
+            
+            local Connection
+            Connection = HoldTween.Completed:Connect(function(status)
+                if status == Enum.PlaybackState.Completed and Holding then
+                    Library:SafeCallback(HoldButton.Func)
+                    Holding = false
+                    FillBar.Size = UDim2.new(0, 0, 1, 0)
+                end
+                if Connection then Connection:Disconnect() end
+            end)
+        end)
+
+        local function Release()
+            if not Holding then return end
+            Holding = false
+            if HoldTween then
+                HoldTween:Cancel()
+            end
+            TweenService:Create(FillBar, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 0, 1, 0)}):Play()
+        end
+
+        Base.MouseButton1Up:Connect(Release)
+        Base.MouseLeave:Connect(Release)
+
+        HoldButton.Base = Base
+        HoldButton.Stroke = Stroke
+        HoldButton.FillBar = FillBar
+
+        return HoldButton
     end
 
     function Funcs:AddButton(...)
@@ -9760,6 +9914,7 @@ function Library:CreateWindow(WindowInfo)
         Library:AddOutline(MainFrame)
         -- Soft outer glow / drop shadow attached to window body outside
         local WindowOuterGlow = New("ImageLabel", {
+            Name = "Glow",
             BackgroundTransparency = 1,
             Image = "rbxassetid://6014261993",
             ImageColor3 = "DarkColor",
@@ -9771,6 +9926,7 @@ function Library:CreateWindow(WindowInfo)
             ZIndex = -1,
             Parent = MainFrame,
         })
+        Window.Glow = WindowOuterGlow
         task.spawn(function()
             local glowInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true, 0)
             TweenService:Create(WindowOuterGlow, glowInfo, {ImageTransparency = 0.2}):Play()
@@ -13943,6 +14099,123 @@ function Library:CreateWindow(WindowInfo)
         return Dialog
     end
 
+    --// Password / premium key dialog
+    -- Uses the library's existing dialog, input, toggle, and footer button
+    -- constructors so it matches the Obsidian window exactly.
+    function Window:AddPasswordDialog(Idx, Info)
+        Info = typeof(Info) == "table" and Info or {}
+        local PasswordInput
+        local RememberToggle
+        local ErrorLabel
+
+        local Dialog = Window:AddDialog(Idx, {
+            Title = Info.Title or "Private Tab",
+            Description = Info.Description or "Enter the password to unlock this feature",
+            Icon = Info.Icon or "lock-keyhole",
+            AutoDismiss = false,
+            OutsideClickDismiss = Info.OutsideClickDismiss == true,
+            FooterButtons = {
+                Cancel = {
+                    Title = Info.CancelText or "Cancel",
+                    Variant = "Secondary",
+                    Order = 1,
+                    Callback = function(CurrentDialog)
+                        Library:SafeCallback(Info.OnCancel, CurrentDialog)
+                        CurrentDialog:Dismiss()
+                    end,
+                },
+                Proceed = {
+                    Title = Info.ProceedText or "Proceed",
+                    Variant = "Success",
+                    Order = 2,
+                    Callback = function(CurrentDialog)
+                        local Value = PasswordInput and PasswordInput.Value or ""
+                        local Remember = RememberToggle and RememberToggle.Value or false
+                        local Valid = true
+                        if typeof(Info.Verify) == "function" then
+                            Valid = Info.Verify(Value, Remember) == true
+                        elseif typeof(Info.Password) == "string" then
+                            Valid = Value == Info.Password
+                        elseif typeof(Info.Key) == "string" then
+                            Valid = Value == Info.Key
+                        end
+                        if not Valid then
+                            ErrorLabel.Text = Info.ErrorText or "Incorrect password"
+                            ErrorLabel.Visible = true
+                            CurrentDialog:Resize()
+                            return
+                        end
+                        Library:SafeCallback(Info.Callback, Value, Remember, CurrentDialog)
+                        CurrentDialog:Dismiss()
+                    end,
+                },
+            },
+        })
+
+        PasswordInput = Dialog:AddInput("Password", {
+            Text = Info.InputLabel or "Password",
+            Placeholder = Info.Placeholder or "Password",
+            Default = Info.Default or "",
+            AllowEmpty = true,
+            Finished = false,
+        })
+        local PasswordBox = PasswordInput.Holder:FindFirstChildWhichIsA("TextBox")
+        local PasswordVisible = false
+        local ShowButton = New("TextButton", {
+            Active = true,
+            AnchorPoint = Vector2.new(1, 0.5),
+            BackgroundTransparency = 1,
+            Position = UDim2.new(1, -6, 1, -10),
+            Size = UDim2.fromOffset(20, 20),
+            Text = "",
+            ZIndex = PasswordBox.ZIndex + 3,
+            Parent = PasswordInput.Holder,
+        })
+        local EyeIcon = Library:GetCustomIcon("eye")
+        local ShowImage = New("ImageLabel", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundTransparency = 1,
+            Image = EyeIcon and EyeIcon.Url or "",
+            ImageColor3 = "FontColor",
+            ImageRectOffset = EyeIcon and EyeIcon.ImageRectOffset or Vector2.zero,
+            ImageRectSize = EyeIcon and EyeIcon.ImageRectSize or Vector2.zero,
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(16, 16),
+            Parent = ShowButton,
+        })
+        ShowButton.MouseButton1Click:Connect(function()
+            PasswordVisible = not PasswordVisible
+            PasswordBox.TextTransparency = PasswordVisible and 0 or 1
+            local Icon = Library:GetCustomIcon(PasswordVisible and "eye-off" or "eye")
+            if Icon then
+                ShowImage.Image = Icon.Url
+                ShowImage.ImageRectOffset = Icon.ImageRectOffset
+                ShowImage.ImageRectSize = Icon.ImageRectSize
+            end
+        end)
+
+        RememberToggle = Dialog:AddToggle("RememberPassword", {
+            Text = Info.RememberText or "Remember me",
+            Default = Info.Remember == true,
+        })
+        ErrorLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 14),
+            Text = "",
+            TextColor3 = Info.ErrorColor or Color3.fromRGB(235, 86, 86),
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Visible = false,
+            Parent = Dialog.Container,
+        })
+        Dialog.PasswordInput = PasswordInput
+        Dialog.RememberToggle = RememberToggle
+        Dialog.ErrorLabel = ErrorLabel
+        Dialog.ShowPasswordButton = ShowButton
+        Dialog:Resize()
+        return Dialog
+    end
+
     local GuiProperties = { "BackgroundTransparency" }
     local ImageProperties = { "BackgroundTransparency", "ImageTransparency" }
     local TextProperties = { "BackgroundTransparency", "TextTransparency" }
@@ -13976,6 +14249,10 @@ function Library:CreateWindow(WindowInfo)
         if MiniFrame then
             MiniFrame.Visible = Library.Toggled and Minimized
         end
+    end
+
+    function Window:SetGlow(State: boolean)
+        return Library:SetGlow(State)
     end
 
     function Window:Toggle(Value: boolean?)
