@@ -1,3 +1,14 @@
+## 13.08.2026
+
+```diff
+[features]
++ Funcs:AddHoldButton — button that must be held for a set duration (HoldTime, default 1s) before firing; accent fill bar sweeps left → right while held and resets on early release; supports Disabled, Risky, Tooltip, SetText, SetDisabled, SetVisible, Destroy
++ Window:AddPasswordDialog — password/key gate dialog built on the existing dialog system; masked input with eye-icon show/hide toggle, Remember me toggle, red error label, supports static Password string or custom Verify function
++ Library:NotifyInfo, Library:NotifySuccess, Library:NotifyWarning, Library:NotifyError — shortcut wrappers for Library:Notify; accept a plain string or full config table; auto-set the Type field
++ Funcs:AddGlassPanel — frosted glass info card inside a groupbox; supports Title, Description, Icon, Badge pill, gradient (AccentColor → MainColor 25°), full stroke/transparency/corner control, SetTitle, SetDescription, SetVisible
++ Library:AddGradient — helper to inject a UIGradient into any GuiObject with Color, Rotation, Transparency, and Offset options
+```
+
 ## 11.08.2026
 
 ```diff
