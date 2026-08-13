@@ -15689,6 +15689,175 @@ function Library:CreateArqelKeySystem(Info)
     return key
 end
 
+function Library:CreateIsnowKeySystem(Info)
+    Info = Library:Validate(Info or {}, {
+        Title       = "Key System",
+        Subtitle    = "Enter your key to continue",
+        Icon        = "",
+        GetKey      = "",
+        Discord     = "",
+        Remember    = true,
+        AutoLoad    = true,
+        Blur        = true,
+        Draggable   = true,
+        NoGetKey    = false,
+        Keyless     = nil,
+        KeylessUI   = false,
+        Accent      = nil,
+        IsnowUrl    = "https://raw.githubusercontent.com/IsnowDev7/Nnd/main/IsnowKeySystem.luau",
+        OnVerify    = nil,
+        SuccessCallback = nil,
+        FailCallback    = nil,
+        CloseCallback   = nil,
+    })
+
+    -- Load Isnow UI
+    local IsnowOk, Isnow = pcall(function()
+        if getgenv().Isnow and typeof(getgenv().Isnow) == "table" and getgenv().Isnow.Launch then
+            return getgenv().Isnow
+        end
+        return loadstring(game:HttpGet(Info.IsnowUrl))()
+    end)
+
+    if not IsnowOk or not Isnow then
+        warn("[Obsidian] Failed to load Isnow key system")
+        if Info.FailCallback then Library:SafeCallback(Info.FailCallback, "ISNOW_LOAD_FAILED") end
+        return nil
+    end
+
+    -- Appearance
+    if Info.Title   ~= "" then Isnow.Appearance.Title    = Info.Title    end
+    if Info.Subtitle ~= "" then Isnow.Appearance.Subtitle = Info.Subtitle end
+    if Info.Icon    ~= "" then Isnow.Appearance.Icon     = Info.Icon     end
+
+    -- Links
+    if Info.GetKey  ~= "" then Isnow.Links.GetKey  = Info.GetKey  end
+    if Info.Discord ~= "" then Isnow.Links.Discord = Info.Discord end
+
+    -- Storage
+    Isnow.Storage.Remember = Info.Remember
+    Isnow.Storage.AutoLoad = Info.AutoLoad
+
+    -- Options
+    Isnow.Options.Blur      = Info.Blur
+    Isnow.Options.Draggable = Info.Draggable
+    Isnow.Options.NoGetKey  = Info.NoGetKey
+    if Info.Keyless   ~= nil then Isnow.Options.Keyless   = Info.Keyless   end
+    if Info.KeylessUI ~= nil then Isnow.Options.KeylessUI = Info.KeylessUI end
+
+    -- Theme accent override
+    if typeof(Info.Accent) == "Color3" then
+        Isnow.Theme.Accent      = Info.Accent
+        Isnow.Theme.AccentHover = Info.Accent
+        Isnow.Theme.StatusIdle  = Info.Accent
+    end
+
+    -- Callbacks
+    if Info.OnVerify then
+        Isnow.Callbacks.OnVerify = Info.OnVerify
+    end
+    Isnow.Callbacks.OnSuccess = function()
+        if Info.SuccessCallback then Library:SafeCallback(Info.SuccessCallback, getgenv().SCRIPT_KEY) end
+    end
+    Isnow.Callbacks.OnFail = function(err)
+        if Info.FailCallback then Library:SafeCallback(Info.FailCallback, err) end
+    end
+    Isnow.Callbacks.OnClose = function()
+        if Info.CloseCallback then Library:SafeCallback(Info.CloseCallback) end
+    end
+
+    -- Launch
+    getgenv().IsnowClosed = false
+    Isnow:Launch()
+    while not getgenv().SCRIPT_KEY and not getgenv().IsnowClosed do task.wait(0.1) end
+
+    local key = getgenv().SCRIPT_KEY
+    if not key then warn("[Obsidian] Isnow key system closed without valid key") end
+    return key
+end
+
+-- Isnow + Junkie integration
+function Library:CreateIsnowJunkieKeySystem(Info)
+    Info = Library:Validate(Info or {}, {
+        Service     = "",
+        Identifier  = "",
+        Provider    = "Mixed",
+        Title       = "Key System",
+        Subtitle    = "Enter your key to continue",
+        Icon        = "",
+        GetKey      = "",
+        Discord     = "",
+        Remember    = true,
+        AutoLoad    = true,
+        Blur        = true,
+        Draggable   = true,
+        Keyless     = nil,
+        KeylessUI   = false,
+        Accent      = nil,
+        IsnowUrl    = "https://raw.githubusercontent.com/IsnowDev7/Nnd/main/IsnowKeySystem.luau",
+        SuccessCallback = nil,
+        FailCallback    = nil,
+        CloseCallback   = nil,
+    })
+
+    assert(Info.Service ~= "" and Info.Identifier ~= "" and Info.Provider ~= "",
+        "[Obsidian] CreateIsnowJunkieKeySystem requires Service, Identifier, and Provider")
+
+    local IsnowOk, Isnow = pcall(function()
+        if getgenv().Isnow and typeof(getgenv().Isnow) == "table" and getgenv().Isnow.Launch then
+            return getgenv().Isnow
+        end
+        return loadstring(game:HttpGet(Info.IsnowUrl))()
+    end)
+
+    if not IsnowOk or not Isnow then
+        warn("[Obsidian] Failed to load Isnow key system")
+        if Info.FailCallback then Library:SafeCallback(Info.FailCallback, "ISNOW_LOAD_FAILED") end
+        return nil
+    end
+
+    if Info.Title    ~= "" then Isnow.Appearance.Title    = Info.Title    end
+    if Info.Subtitle ~= "" then Isnow.Appearance.Subtitle = Info.Subtitle end
+    if Info.Icon     ~= "" then Isnow.Appearance.Icon     = Info.Icon     end
+    if Info.GetKey   ~= "" then Isnow.Links.GetKey  = Info.GetKey  end
+    if Info.Discord  ~= "" then Isnow.Links.Discord = Info.Discord end
+
+    Isnow.Storage.Remember = Info.Remember
+    Isnow.Storage.AutoLoad = Info.AutoLoad
+    Isnow.Options.Blur      = Info.Blur
+    Isnow.Options.Draggable = Info.Draggable
+    if Info.Keyless   ~= nil then Isnow.Options.Keyless   = Info.Keyless   end
+    if Info.KeylessUI ~= nil then Isnow.Options.KeylessUI = Info.KeylessUI end
+
+    if typeof(Info.Accent) == "Color3" then
+        Isnow.Theme.Accent      = Info.Accent
+        Isnow.Theme.AccentHover = Info.Accent
+        Isnow.Theme.StatusIdle  = Info.Accent
+    end
+
+    Isnow.Callbacks.OnSuccess = function()
+        if Info.SuccessCallback then Library:SafeCallback(Info.SuccessCallback, getgenv().SCRIPT_KEY) end
+    end
+    Isnow.Callbacks.OnFail = function(err)
+        if Info.FailCallback then Library:SafeCallback(Info.FailCallback, err) end
+    end
+    Isnow.Callbacks.OnClose = function()
+        if Info.CloseCallback then Library:SafeCallback(Info.CloseCallback) end
+    end
+
+    getgenv().IsnowClosed = false
+    Isnow:LaunchJunkie({
+        Service    = Info.Service,
+        Identifier = Info.Identifier,
+        Provider   = Info.Provider,
+    })
+    while not getgenv().SCRIPT_KEY and not getgenv().IsnowClosed do task.wait(0.1) end
+
+    local key = getgenv().SCRIPT_KEY
+    if not key then warn("[Obsidian] Isnow Junkie key system closed without valid key") end
+    return key
+end
+
 function Library:NotifyInfo(Info, Time, SoundId)
     if typeof(Info) == "table" then
         Info.Type = Info.Type or "Info"
