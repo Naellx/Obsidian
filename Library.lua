@@ -214,6 +214,19 @@ local Library = {
     BackgroundImagePanelTransparency = 0.18,
     BackgroundImageContentTransparency = 0.08,
 
+    --// Mobile \\--
+    IsMobile = false,
+    DevicePlatform = nil,
+    OriginalMinSize = Vector2.new(480, 360),
+
+    --// DPI Scales \\--
+    Scales = {},
+    ScalesOffset = {},
+
+    --// Dynamic Island \\--
+    FloatingSpritesGui = nil,
+    DynamicIslandOverlayGui = nil,
+
     --// Corners \\--
     Corners = {},
     SpecificCorners = {},
@@ -405,6 +418,59 @@ local Templates = {
 
         ShowMobileButtons = true,
         MobileButtonsSide = "Left",
+
+        --// Dynamic Island \\--
+        DynamicIsland = false,
+        DynamicIslandActive = nil,
+        DynamicIslandImage = nil,
+        DynamicIslandIcon = nil,
+        DynamicIslandText = nil,
+        DynamicIslandSubtitle = nil,
+        DynamicIslandOpenText = nil,
+        DynamicIslandClosedText = nil,
+        DynamicIslandLockedText = "Locked",
+        DynamicIslandUnlockedText = "Unlocked",
+        DynamicIslandUseTopbarHeight = true,
+        DynamicIslandHeight = nil,
+        DynamicIslandPosition = UDim2.new(0.5, 0, 0, 15),
+        DynamicIslandAnchorPoint = Vector2.new(0.5, 0),
+        DynamicIslandSize = UDim2.fromOffset(120, 36),
+        DynamicIslandExpandedSize = UDim2.fromOffset(146, 36),
+        DynamicIslandIdleSize = nil,
+        DynamicIslandScale = 0.75,
+        DynamicIslandIdleScale = 0.75,
+        DynamicIslandTopbarHeightScale = 0.75,
+        DynamicIslandTopOffset = 15,
+        DynamicIslandMinHeight = nil,
+        DynamicIslandMaxHeight = nil,
+        DynamicIslandCornerRadius = nil,
+        DynamicIslandIdleCornerRadius = 7,
+        DynamicIslandAssetSize = UDim2.fromOffset(18, 18),
+        DynamicIslandLockIconSize = UDim2.fromOffset(13, 13),
+        DynamicIslandTransparency = 0,
+        DynamicIslandIdleTransparency = 0.16,
+        DynamicIslandGlassTransparency = 0.88,
+        DynamicIslandBorderThickness = 1.35,
+        DynamicIslandGlow = true,
+        DynamicIslandGlowTransparency = 0.86,
+        DynamicIslandShadow = true,
+        DynamicIslandShadowTransparency = 0.5,
+        DynamicIslandLiquidGlass = true,
+        DynamicIslandLiquidGlassIntensity = 1,
+        DynamicIslandGlassStyle = "iOS",
+        DynamicIslandGradientAnimation = true,
+        DynamicIslandGradientAnimationSpeed = 2.8,
+        DynamicIslandIdle = true,
+        DynamicIslandIdleEnabled = true,
+        DynamicIslandIdleDelay = 2.35,
+        DynamicIslandActionMenu = true,
+        DynamicIslandActionAutoCloseDelay = 8,
+        DynamicIslandDragOpenThreshold = 46,
+        DynamicIslandDragLockThreshold = 64,
+        DynamicIslandPanelCloseThreshold = 28,
+        DynamicIslandZIndex = 250,
+        DynamicIslandHideContentWhenIdle = true,
+        MethodToggle = "Button",
 
         UnlockMouseWhileOpen = true,
 
@@ -2039,6 +2105,144 @@ function Library:AddBlank(Frame: GuiObject, Size: UDim2)
         Size = Size or UDim2.fromScale(0, 0),
         Parent = Frame,
     })
+end
+
+--// Mobile Detection \\--
+do
+    local RunServiceRef = game:GetService("RunService")
+    local UserInputServiceRef = game:GetService("UserInputService")
+    if RunServiceRef:IsStudio() then
+        if UserInputServiceRef.TouchEnabled and not UserInputServiceRef.MouseEnabled then
+            Library.IsMobile = true
+            Library.OriginalMinSize = Vector2.new(480, 240)
+        else
+            Library.IsMobile = false
+            Library.OriginalMinSize = Vector2.new(480, 360)
+        end
+    else
+        pcall(function()
+            Library.DevicePlatform = UserInputServiceRef:GetPlatform()
+        end)
+        Library.IsMobile = (Library.DevicePlatform == Enum.Platform.Android or Library.DevicePlatform == Enum.Platform.IOS)
+        Library.OriginalMinSize = Library.IsMobile and Vector2.new(480, 240) or Vector2.new(480, 360)
+    end
+end
+
+--// Floating GUIs \\--
+local FloatingSpritesGui = New("ScreenGui", {
+    Name = "ObsidianFloatingSprites",
+    DisplayOrder = 1001,
+    IgnoreGuiInset = true,
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Global,
+})
+pcall(function() FloatingSpritesGui.Parent = game:GetService("CoreGui") end)
+if not FloatingSpritesGui.Parent then
+    pcall(function() FloatingSpritesGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end)
+end
+Library.FloatingSpritesGui = FloatingSpritesGui
+
+local DynamicIslandOverlayGui = New("ScreenGui", {
+    Name = "ObsidianDynamicIslandOverlay",
+    DisplayOrder = 1004,
+    IgnoreGuiInset = true,
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Global,
+})
+pcall(function() DynamicIslandOverlayGui.Parent = game:GetService("CoreGui") end)
+if not DynamicIslandOverlayGui.Parent then
+    pcall(function() DynamicIslandOverlayGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui") end)
+end
+Library.DynamicIslandOverlayGui = DynamicIslandOverlayGui
+
+--// Shadow helpers \\--
+local function SafeSetInstanceProperty(Instance, Property: string, Value)
+    return pcall(function() Instance[Property] = Value end)
+end
+
+local function IsHttpUrl(Value)
+    return typeof(Value) == "string" and Value:match("^https?://") ~= nil
+end
+
+function Library:SetShadowGlowColor(Shadow, Color)
+    if not Shadow then return end
+    local ResolvedColor = (typeof(Color) == "string" and Library.Scheme[Color]) or Color or Library.Scheme.DarkColor
+    local RegistryProperty = nil
+    if SafeSetInstanceProperty(Shadow, "Color", ResolvedColor) then
+        RegistryProperty = "Color"
+    elseif SafeSetInstanceProperty(Shadow, "ImageColor3", ResolvedColor) then
+        RegistryProperty = "ImageColor3"
+    end
+    if typeof(Color) == "string" and RegistryProperty then
+        if not Library.Registry[Shadow] then Library:AddToRegistry(Shadow, {}) end
+        Library.Registry[Shadow][RegistryProperty] = Color
+    end
+end
+
+function Library:SetShadowGlowTransparency(Shadow, Transparency: number)
+    if not Shadow then return end
+    Transparency = math.clamp(tonumber(Transparency) or 0, 0, 1)
+    if SafeSetInstanceProperty(Shadow, "Transparency", Transparency) then return end
+    SafeSetInstanceProperty(Shadow, "ImageTransparency", Transparency)
+end
+
+function Library:AddShadowGlow(Frame: GuiObject, Info)
+    Info = Info or {}
+    if Info.Enabled == false then return nil end
+
+    local Padding = math.max(0, tonumber(Info.Size or Info.Thickness or Info.Padding) or 18)
+    local Offset = typeof(Info.Offset) == "Vector2" and Info.Offset
+        or Vector2.new(tonumber(Info.OffsetX) or 0, tonumber(Info.OffsetY) or 0)
+    local Parent = Info.Parent or Frame.Parent
+    if not Parent then return nil end
+
+    local Glow = New("ImageLabel", {
+        Name = Info.Name or "ShadowGlow",
+        BackgroundTransparency = 1,
+        Image = Info.Image or "rbxassetid://6014261993",
+        ImageColor3 = Info.Color or "DarkColor",
+        ImageTransparency = math.clamp(tonumber(Info.Transparency) or 0.62, 0, 1),
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Info.SliceCenter or Rect.new(49, 49, 450, 450),
+        Visible = Frame.Visible,
+        ZIndex = Info.ZIndex or math.max(0, Frame.ZIndex - 1),
+        Parent = Parent,
+    })
+    if typeof(Info.Color) == "string" then
+        Library:AddToRegistry(Glow, { ImageColor3 = Info.Color })
+    end
+
+    local TrackParent = Info.Parent == nil
+    local function Sync()
+        if not Glow.Parent then return end
+        if not Frame.Parent then Glow.Visible = false return end
+        if TrackParent and Frame.Parent and Glow.Parent ~= Frame.Parent then
+            Glow.Parent = Frame.Parent
+        end
+        local AnchorPoint = Frame.AnchorPoint
+        local PositionOffsetX = Offset.X + ((AnchorPoint.X * 2) - 1) * Padding
+        local PositionOffsetY = Offset.Y + ((AnchorPoint.Y * 2) - 1) * Padding
+        Glow.AnchorPoint = AnchorPoint
+        Glow.Position = UDim2.new(
+            Frame.Position.X.Scale, Frame.Position.X.Offset + PositionOffsetX,
+            Frame.Position.Y.Scale, Frame.Position.Y.Offset + PositionOffsetY
+        )
+        Glow.Size = UDim2.new(
+            Frame.Size.X.Scale, Frame.Size.X.Offset + (Padding * 2),
+            Frame.Size.Y.Scale, Frame.Size.Y.Offset + (Padding * 2)
+        )
+        Glow.Visible = Frame.Visible
+        Glow.ZIndex = Info.ZIndex or math.max(0, Frame.ZIndex - 1)
+    end
+
+    Sync()
+    Library:GiveSignal(Frame:GetPropertyChangedSignal("Position"):Connect(Sync))
+    Library:GiveSignal(Frame:GetPropertyChangedSignal("Size"):Connect(Sync))
+    Library:GiveSignal(Frame:GetPropertyChangedSignal("AnchorPoint"):Connect(Sync))
+    Library:GiveSignal(Frame:GetPropertyChangedSignal("Visible"):Connect(Sync))
+    Library:GiveSignal(Frame:GetPropertyChangedSignal("ZIndex"):Connect(Sync))
+    Library:GiveSignal(Frame:GetPropertyChangedSignal("Parent"):Connect(Sync))
+    return Glow, Sync
 end
 
 --// Glass Panel Helpers \\--
@@ -9253,6 +9457,297 @@ do
         return Panel
     end
 
+    local function CreateNewElementButton(Groupbox, Info, Variant)
+        Info = Info or {}
+        local Container = Groupbox.Container
+        local Accent = Info.AccentColor or "AccentColor"
+        local Button = {
+            Text    = Info.Text or (Variant == "ShinyButton" and "Shiny Button" or "Highlight Button"),
+            Func    = Info.Func or Info.Callback or function() end,
+            Disabled = Info.Disabled or false,
+            Visible  = Info.Visible ~= false,
+            Type     = Variant,
+        }
+
+        local Holder = New("TextButton", {
+            Active                 = not Button.Disabled,
+            BackgroundColor3       = Info.BackgroundColor or "MainColor",
+            BackgroundTransparency = Info.Transparency or 0.08,
+            ClipsDescendants       = true,
+            Size                   = UDim2.new(1, 0, 0, Info.Height or 30),
+            Text                   = "",
+            Visible                = Button.Visible,
+            Parent                 = Container,
+        })
+        RegisterBackgroundImageSurface(Holder, Info.Transparency or 0.08, "Panel")
+        table.insert(Library.Corners, New("UICorner", {
+            CornerRadius = UDim.new(0, Info.CornerRadius or Library.CornerRadius),
+            Parent = Holder,
+        }))
+        Library:AddOutline(Holder, {
+            Color       = Info.StrokeColor or Accent,
+            Thickness   = Info.StrokeThickness or 1,
+            Transparency = Info.StrokeTransparency or 0.25,
+        })
+        Library:AddGradient(Holder, {
+            Color = Info.GradientColorSequence or ColorSequence.new({
+                ColorSequenceKeypoint.new(0, typeof(Accent) == "Color3" and Accent or Library.Scheme.AccentColor),
+                ColorSequenceKeypoint.new(1, Library.Scheme.MainColor),
+            }),
+            Rotation     = Info.GradientRotation or 0,
+            Transparency = Info.GradientTransparency or NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.45),
+                NumberSequenceKeypoint.new(1, 0.9),
+            }),
+        })
+
+        local ParsedIcon = Info.Icon and Library:GetCustomIcon(Info.Icon)
+        if ParsedIcon then
+            New("ImageLabel", {
+                AnchorPoint          = Vector2.new(0, 0.5),
+                BackgroundTransparency = 1,
+                Image                = ParsedIcon.Url,
+                ImageColor3          = Info.IconColor or Accent,
+                ImageRectOffset      = ParsedIcon.ImageRectOffset,
+                ImageRectSize        = ParsedIcon.ImageRectSize,
+                Position             = UDim2.new(0, 10, 0.5, 0),
+                Size                 = UDim2.fromOffset(16, 16),
+                ZIndex               = 2,
+                Parent               = Holder,
+            })
+        end
+
+        local Label = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Position               = ParsedIcon and UDim2.fromOffset(32, 0) or UDim2.fromOffset(0, 0),
+            Size                   = ParsedIcon and UDim2.new(1, -40, 1, 0) or UDim2.fromScale(1, 1),
+            Text                   = Button.Text,
+            TextSize               = Info.TextSize or 14,
+            TextTransparency       = 0.1,
+            ZIndex                 = 2,
+            Parent                 = Holder,
+        })
+
+        -- Shine effect (ShinyButton / LiquidGlassButton)
+        local Shine
+        if Variant == "ShinyButton" or Variant == "LiquidGlassButton" or Info.Shine then
+            Shine = New("Frame", {
+                AnchorPoint          = Vector2.new(0.5, 0.5),
+                BackgroundColor3     = Info.ShineColor or "WhiteColor",
+                BackgroundTransparency = Info.ShineTransparency or 0.55,
+                Position             = UDim2.fromScale(-0.25, 0.5),
+                Size                 = UDim2.new(0, Info.ShineWidth or 60, 1, 0),
+                ZIndex               = 1,
+                Parent               = Holder,
+            })
+            table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Shine }))
+        end
+
+        local function PlayShine()
+            if not Shine then return end
+            Shine.Position = UDim2.fromScale(-0.25, 0.5)
+            TweenService:Create(Shine, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Position = UDim2.fromScale(1.25, 0.5),
+            }):Play()
+        end
+
+        if Shine and Variant == "ShinyButton" then
+            task.spawn(function()
+                while Holder and Holder.Parent do
+                    if Button.Visible and not Button.Disabled then PlayShine() end
+                    task.wait(1.8)
+                end
+            end)
+        end
+
+        Holder.MouseEnter:Connect(function()
+            if Button.Disabled then return end
+            TweenService:Create(Holder, Library.TweenInfo, {
+                BackgroundTransparency = GetBackgroundImageSurfaceTransparency(Info.HoverTransparency or 0, "Panel"),
+            }):Play()
+            TweenService:Create(Label, Library.TweenInfo, { TextTransparency = 0 }):Play()
+            PlayShine()
+        end)
+        Holder.MouseLeave:Connect(function()
+            if Button.Disabled then return end
+            TweenService:Create(Holder, Library.TweenInfo, {
+                BackgroundTransparency = GetBackgroundImageSurfaceTransparency(Info.Transparency or 0.08, "Panel"),
+            }):Play()
+            TweenService:Create(Label, Library.TweenInfo, { TextTransparency = 0.1 }):Play()
+        end)
+        Holder.MouseButton1Click:Connect(function()
+            if Button.Disabled then return end
+            Library:SafeCallback(Button.Func, Button)
+        end)
+
+        function Button:SetText(Text)
+            Button.Text = tostring(Text)
+            Label.Text  = Button.Text
+        end
+
+        function Button:SetDisabled(Disabled)
+            Button.Disabled  = Disabled
+            Holder.Active    = not Disabled
+            Label.TextTransparency = Disabled and 0.75 or 0.1
+        end
+
+        function Button:SetVisible(Visible)
+            Button.Visible  = Visible
+            Holder.Visible  = Visible
+            Groupbox:Resize()
+        end
+
+        Button.Holder = Holder
+        table.insert(Groupbox.Elements, Button)
+        Groupbox:Resize()
+        return Button
+    end
+
+    function Funcs:AddHighlightButton(Info)
+        Info = Info or {}
+        Info.Transparency      = Info.Transparency or 0.02
+        Info.HoverTransparency = Info.HoverTransparency or 0
+        local Button = CreateNewElementButton(self, Info, "HighlightButton")
+        local Holder = Button.Holder
+        task.spawn(function()
+            while Holder and Holder.Parent do
+                TweenService:Create(Holder, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    BackgroundTransparency = GetBackgroundImageSurfaceTransparency(Info.Transparency + 0.06, "Panel"),
+                }):Play()
+                task.wait(0.9)
+                TweenService:Create(Holder, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+                    BackgroundTransparency = GetBackgroundImageSurfaceTransparency(Info.Transparency, "Panel"),
+                }):Play()
+                task.wait(0.9)
+            end
+        end)
+        return Button
+    end
+
+    function Funcs:AddShinyButton(Info)
+        Info = Info or {}
+        Info.Shine = true
+        return CreateNewElementButton(self, Info, "ShinyButton")
+    end
+
+    function Funcs:AddLiquidGlassButton(Info)
+        Info = Info or {}
+        Info.Shine             = true
+        Info.Transparency      = Info.Transparency or 0.18
+        Info.HoverTransparency = Info.HoverTransparency or 0.04
+        return CreateNewElementButton(self, Info, "LiquidGlassButton")
+    end
+
+    function Funcs:AddLiquidGlassToggle(Idx, Info)
+        Info = Library:Validate(Info, Templates.Toggle)
+
+        local Groupbox  = self
+        local Container = Groupbox.Container
+        local Toggle = {
+            Text     = Info.Text,
+            Value    = Info.Default,
+            Callback = Info.Callback,
+            Changed  = Info.Changed,
+            Disabled = Info.Disabled,
+            Visible  = Info.Visible,
+            Type     = "Toggle",
+        }
+
+        local Holder = New("TextButton", {
+            Active                 = not Toggle.Disabled,
+            BackgroundColor3       = "MainColor",
+            BackgroundTransparency = 0.2,
+            ClipsDescendants       = true,
+            Size                   = UDim2.new(1, 0, 0, 32),
+            Text                   = "",
+            Visible                = Toggle.Visible,
+            Parent                 = Container,
+        })
+        RegisterBackgroundImageSurface(Holder, 0.2, "Panel")
+        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(0, Library.CornerRadius), Parent = Holder }))
+        Library:AddOutline(Holder, { Color = "AccentColor", Transparency = 0.45 })
+        Library:AddGradient(Holder, {
+            Rotation     = 12,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.55),
+                NumberSequenceKeypoint.new(1, 0.95),
+            }),
+        })
+
+        local TextLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Position               = UDim2.fromOffset(10, 0),
+            Size                   = UDim2.new(1, -58, 1, 0),
+            Text                   = Toggle.Text,
+            TextSize               = 14,
+            TextXAlignment         = Enum.TextXAlignment.Left,
+            Parent                 = Holder,
+        })
+        local Pill = New("Frame", {
+            AnchorPoint      = Vector2.new(1, 0.5),
+            BackgroundColor3 = "OutlineColor",
+            Position         = UDim2.new(1, -8, 0.5, 0),
+            Size             = UDim2.fromOffset(38, 18),
+            Parent           = Holder,
+        })
+        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Pill }))
+        local Dot = New("Frame", {
+            AnchorPoint      = Vector2.new(0, 0.5),
+            BackgroundColor3 = "WhiteColor",
+            Position         = UDim2.new(0, 3, 0.5, 0),
+            Size             = UDim2.fromOffset(12, 12),
+            Parent           = Pill,
+        })
+        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = Dot }))
+
+        function Toggle:Display()
+            TweenService:Create(Pill, Library.TweenInfo, {
+                BackgroundColor3 = Toggle.Value and Library.Scheme.AccentColor or Library.Scheme.OutlineColor,
+            }):Play()
+            TweenService:Create(Dot, Library.TweenInfo, {
+                Position = Toggle.Value and UDim2.new(1, -15, 0.5, 0) or UDim2.new(0, 3, 0.5, 0),
+            }):Play()
+        end
+
+        function Toggle:SetValue(Value)
+            if Toggle.Disabled then return end
+            Toggle.Value = Value == true
+            Toggle:Display()
+            Library:SafeCallback(Toggle.Callback, Toggle.Value)
+            Library:SafeCallback(Toggle.Changed, Toggle.Value)
+        end
+
+        function Toggle:OnChanged(Func) Toggle.Changed = Func end
+
+        function Toggle:SetDisabled(Disabled)
+            Toggle.Disabled = Disabled
+            Holder.Active   = not Disabled
+            TextLabel.TextTransparency = Disabled and 0.75 or 0
+        end
+
+        function Toggle:SetVisible(Visible)
+            Toggle.Visible  = Visible
+            Holder.Visible  = Visible
+            Groupbox:Resize()
+        end
+
+        function Toggle:SetText(Text)
+            Toggle.Text    = tostring(Text)
+            TextLabel.Text = Toggle.Text
+        end
+
+        Holder.MouseButton1Click:Connect(function() Toggle:SetValue(not Toggle.Value) end)
+
+        Toggle:Display()
+        Toggle.Holder    = Holder
+        Toggle.TextLabel = TextLabel
+        table.insert(Groupbox.Elements, Toggle)
+        Toggles[Idx] = Toggle
+        Options[Idx] = Toggle
+        Groupbox:Resize()
+        return Toggle
+    end
+
     function Funcs:AddDependencyBox()
         if self.Destroyed then return nil end
 
@@ -14318,6 +14813,2623 @@ function Library:CreateWindow(WindowInfo)
 
         if MiniFrame then
             MiniFrame.Visible = Library.Toggled and Minimized
+        end
+    end
+
+    --// Dynamic Island \\--
+    local DynamicIslandController
+    local ToggleMethod = tostring(WindowInfo.MethodToggle or WindowInfo.DynamicIsland == true and "dynamicisland" or "button"):lower():gsub("[%s_%-%/]+", "")
+    local UseDynamicIslandToggle = WindowInfo.DynamicIsland == true or WindowInfo.DynamicIslandActive == true or ToggleMethod == "dynamicisland"
+
+    local function ResolveDynamicIslandAsset(Asset)
+        Asset = Asset or WindowInfo.DynamicIslandImage or WindowInfo.DynamicIslandIcon or WindowInfo.Icon or "sparkles"
+        if tonumber(Asset) then
+            return { Url = string.format("rbxassetid://%s", tostring(Asset)), ImageRectOffset = Vector2.zero, ImageRectSize = Vector2.zero, Custom = true }
+        end
+        if typeof(Asset) ~= "string" then return nil end
+        local Icon = Library:GetCustomIcon(Asset)
+        if Icon then return Icon end
+        return { Url = Asset, ImageRectOffset = Vector2.zero, ImageRectSize = Vector2.zero, Custom = true }
+    end
+
+    local function CreateDynamicIslandToggle()
+        if DynamicIslandController then
+            return DynamicIslandController
+        end
+
+        local UseTopbarHeight = WindowInfo.DynamicIslandUseTopbarHeight ~= false
+        local function GetTopbarMetrics()
+            local TopbarY = 0
+            local TopbarHeight = Library.IsMobile and 44 or 36
+
+            local TopbarSuccess, TopbarInset = pcall(function()
+                return GuiService.TopbarInset
+            end)
+            if TopbarSuccess and typeof(TopbarInset) == "Rect" then
+                TopbarY = math.max(0, TopbarInset.Min.Y)
+                local MeasuredHeight = TopbarInset.Max.Y - TopbarInset.Min.Y
+                if MeasuredHeight > 0 then
+                    TopbarHeight = MeasuredHeight
+                end
+            else
+                local InsetSuccess, TopLeftInset = pcall(function()
+                    return GuiService:GetGuiInset()
+                end)
+                if InsetSuccess and typeof(TopLeftInset) == "Vector2" then
+                    if TopLeftInset.Y > 0 then
+                        TopbarHeight = TopLeftInset.Y
+                    end
+                end
+            end
+
+            local HeightScale = math.clamp(tonumber(WindowInfo.DynamicIslandTopbarHeightScale) or 0.75, 0.5, 1)
+            local MinHeight = tonumber(WindowInfo.DynamicIslandMinHeight) or (Library.IsMobile and 30 or 28)
+            local MaxHeight = tonumber(WindowInfo.DynamicIslandMaxHeight) or (Library.IsMobile and 44 or 36)
+            local HeightOverride = tonumber(WindowInfo.DynamicIslandHeight)
+            local TargetHeight = HeightOverride or (TopbarHeight * HeightScale)
+            if HeightOverride then
+                TargetHeight = math.max(1, TargetHeight)
+            else
+                TargetHeight = math.clamp(TargetHeight, MinHeight, math.max(MinHeight, MaxHeight))
+            end
+
+            return TopbarY, math.floor(TargetHeight + 0.5)
+        end
+
+        local TopbarY, TopbarHeight = GetTopbarMetrics()
+        local DynamicIslandScale = math.clamp(tonumber(WindowInfo.DynamicIslandScale) or 0.75, 0.5, 1.2)
+        local DynamicIslandIdleScale = math.clamp(tonumber(WindowInfo.DynamicIslandIdleScale) or 0.75, 0.25, 1)
+        local function ApplyIslandHeight(Size, DefaultWidth)
+            if typeof(Size) ~= "UDim2" then
+                return UDim2.fromOffset(math.floor((DefaultWidth * DynamicIslandScale) + 0.5), TopbarHeight)
+            end
+
+            local WidthOffset = Size.X.Offset ~= 0 and Size.X.Offset or DefaultWidth
+            WidthOffset = math.floor((WidthOffset * DynamicIslandScale) + 0.5)
+            local HeightOffset = UseTopbarHeight and TopbarHeight
+                or (Size.Y.Offset ~= 0 and Size.Y.Offset or TopbarHeight)
+            return UDim2.new(Size.X.Scale, WidthOffset, 0, HeightOffset)
+        end
+
+        local CollapsedSize = ApplyIslandHeight(WindowInfo.DynamicIslandSize, 120)
+        local ExpandedSize = ApplyIslandHeight(WindowInfo.DynamicIslandExpandedSize, 146)
+        local IdleSize
+        if typeof(WindowInfo.DynamicIslandIdleSize) == "UDim2" then
+            IdleSize =
+                ApplyIslandHeight(WindowInfo.DynamicIslandIdleSize, CollapsedSize.X.Offset * DynamicIslandIdleScale)
+        else
+            IdleSize = UDim2.new(
+                CollapsedSize.X.Scale * DynamicIslandIdleScale,
+                math.max(TopbarHeight, math.floor((CollapsedSize.X.Offset * DynamicIslandIdleScale) + 0.5)),
+                0,
+                TopbarHeight
+            )
+        end
+        local TopOffset = tonumber(WindowInfo.DynamicIslandTopOffset) or 15
+        local ActivePosition = if UseTopbarHeight
+            then UDim2.new(0.5, 0, 0, TopbarY + TopOffset)
+            else (WindowInfo.DynamicIslandPosition or UDim2.new(0.5, 0, 0, 15))
+        local IdlePosition = if UseTopbarHeight
+            then UDim2.new(0.5, 0, 0, TopbarY + TopOffset - math.floor(TopbarHeight * 0.42))
+            else (WindowInfo.DynamicIslandIdlePosition or UDim2.new(0.5, 0, 0, 2))
+        local BaseTransparency = math.clamp(tonumber(WindowInfo.DynamicIslandTransparency) or 0, 0, 1)
+        local IdleTransparency = math.clamp(tonumber(WindowInfo.DynamicIslandIdleTransparency) or 0.16, 0, 1)
+        local GlassTransparency = math.clamp(tonumber(WindowInfo.DynamicIslandGlassTransparency) or 0.88, 0, 1)
+        local BorderThickness = math.max(1, tonumber(WindowInfo.DynamicIslandBorderThickness) or 1.35)
+        local DynamicIslandGlowEnabled = WindowInfo.DynamicIslandGlow ~= false
+        local DynamicIslandGlowTransparency =
+            math.clamp(tonumber(WindowInfo.DynamicIslandGlowTransparency) or 0.86, 0, 1)
+        local DynamicIslandShadowTransparency =
+            math.clamp(tonumber(WindowInfo.DynamicIslandShadowTransparency) or 0.5, 0, 1)
+        local LiquidGlassEnabled = WindowInfo.DynamicIslandLiquidGlass ~= false
+        local LiquidGlassIntensity = math.clamp(tonumber(WindowInfo.DynamicIslandLiquidGlassIntensity) or 1, 0, 1.5)
+        local DynamicIslandGlassStyle = tostring(WindowInfo.DynamicIslandGlassStyle or "iOS"):gsub("%s+", ""):lower()
+        local LegacyGlassStyle = DynamicIslandGlassStyle == "legacy"
+        local CleanGlassStyle = DynamicIslandGlassStyle == "clean"
+        local IOSGlassStyle = not LegacyGlassStyle and not CleanGlassStyle
+        local HideContentWhenIdle = WindowInfo.DynamicIslandHideContentWhenIdle ~= false
+        local GradientAnimationEnabled = WindowInfo.DynamicIslandGradientAnimation ~= false
+        local GradientAnimationSpeed = math.max(1.2, tonumber(WindowInfo.DynamicIslandGradientAnimationSpeed) or 2.8)
+        local IslandFont = WindowInfo.DynamicIslandFont or Font.fromEnum(Enum.Font.GothamMedium)
+        local AssetSize = WindowInfo.DynamicIslandAssetSize or UDim2.fromOffset(18, 18)
+        local LockIconSize = WindowInfo.DynamicIslandLockIconSize or UDim2.fromOffset(13, 13)
+        local AssetWidth = math.max(16, AssetSize.X.Offset ~= 0 and AssetSize.X.Offset or TopbarHeight - 16)
+        local LockIconWidth = math.max(12, LockIconSize.X.Offset ~= 0 and LockIconSize.X.Offset or 15)
+        local TextLeft = 11 + AssetWidth + 7
+        local IdleDelay = math.max(0.35, tonumber(WindowInfo.DynamicIslandIdleDelay) or 2.35)
+        local ActionMenuEnabled = WindowInfo.DynamicIslandActionMenu ~= false
+        local ActionAutoCloseDelay = math.max(2, tonumber(WindowInfo.DynamicIslandActionAutoCloseDelay) or 8)
+        local DragOpenThreshold = math.max(18, tonumber(WindowInfo.DynamicIslandDragOpenThreshold) or 46)
+        local DragLockThreshold = math.max(28, tonumber(WindowInfo.DynamicIslandDragLockThreshold) or 64)
+        local PanelCloseThreshold = math.max(16, tonumber(WindowInfo.DynamicIslandPanelCloseThreshold) or 28)
+        local IdleEnabled = WindowInfo.DynamicIslandIdle ~= false and WindowInfo.DynamicIslandIdleEnabled ~= false
+        local ActionOffset = if typeof(WindowInfo.DynamicIslandActionOffset) == "Vector2"
+            then WindowInfo.DynamicIslandActionOffset
+            else Vector2.new(0, math.max(8, math.floor(TopbarHeight * 0.62)))
+        local ActionSize = if typeof(WindowInfo.DynamicIslandActionSize) == "UDim2"
+            then WindowInfo.DynamicIslandActionSize
+            else UDim2.fromOffset(
+                math.max(232, math.floor(ExpandedSize.X.Offset + (Library.IsMobile and 112 or 128))),
+                math.max(66, math.floor(TopbarHeight * 2.2))
+            )
+        local ActionPosition = UDim2.new(
+            ActivePosition.X.Scale,
+            ActivePosition.X.Offset + ActionOffset.X,
+            ActivePosition.Y.Scale,
+            ActivePosition.Y.Offset + ActionOffset.Y
+        )
+        local function GetPanelGrabBarPosition(Position: UDim2, Size: UDim2): UDim2
+            return UDim2.new(
+                Position.X.Scale,
+                Position.X.Offset,
+                Position.Y.Scale + (Size.Y.Scale * 1.05),
+                Position.Y.Offset + math.floor((Size.Y.Offset * 1.05) + 0.5)
+            )
+        end
+        local function ResolveIslandCornerRadius(Value, Default: UDim): UDim
+            if typeof(Value) == "UDim" then
+                return Value
+            end
+
+            local Offset = tonumber(Value)
+            if Offset then
+                return UDim.new(0, math.max(0, Offset))
+            end
+
+            return Default
+        end
+        local ActiveCornerRadius = ResolveIslandCornerRadius(WindowInfo.DynamicIslandCornerRadius, UDim.new(1, 0))
+        local IdleCornerRadius = ResolveIslandCornerRadius(WindowInfo.DynamicIslandIdleCornerRadius, UDim.new(0, 7))
+        local PanelCornerRadius = ResolveIslandCornerRadius(WindowInfo.DynamicIslandPanelCornerRadius, UDim.new(0, 10))
+        local Island = New("TextButton", {
+            Name = "DynamicIslandToggle",
+            Active = true,
+            AnchorPoint = WindowInfo.DynamicIslandAnchorPoint or Vector2.new(0.5, 0),
+            AutoButtonColor = false,
+            BackgroundColor3 = "BackgroundColor",
+            BackgroundTransparency = BaseTransparency,
+            ClipsDescendants = true,
+            Position = ActivePosition,
+            Size = CollapsedSize,
+            Text = "",
+            Visible = WindowInfo.ShowMobileButtons ~= false,
+            ZIndex = WindowInfo.DynamicIslandZIndex or 250,
+            Parent = FloatingSpritesGui,
+        })
+        local IslandCorner = New("UICorner", { CornerRadius = ActiveCornerRadius, Parent = Island })
+        table.insert(Library.Corners, IslandCorner)
+        local IslandShadow = if WindowInfo.DynamicIslandShadow ~= false
+            then Library:AddShadowGlow(Island, {
+                Name = "DynamicIslandShadow",
+                Color = WindowInfo.DynamicIslandShadowColor or WindowInfo.ShadowColor or "DarkColor",
+                Transparency = DynamicIslandShadowTransparency,
+                Size = WindowInfo.DynamicIslandShadowSize or 13,
+                Offset = WindowInfo.DynamicIslandShadowOffset or Vector2.new(0, 4),
+                Image = WindowInfo.DynamicIslandShadowImage,
+                ZIndex = Island.ZIndex - 3,
+            })
+            else nil
+        local IslandImageGlow = if DynamicIslandGlowEnabled
+            then Library:AddShadowGlow(Island, {
+                Name = "DynamicIslandGlow",
+                Color = WindowInfo.DynamicIslandGlowColor or "WhiteColor",
+                Transparency = DynamicIslandGlowTransparency,
+                Size = WindowInfo.DynamicIslandGlowSize or 8,
+                Offset = WindowInfo.DynamicIslandGlowOffset or Vector2.zero,
+                Image = WindowInfo.DynamicIslandGlowImage,
+                ZIndex = Island.ZIndex - 2,
+            })
+            else nil
+        local OuterGlowStroke = New("UIStroke", {
+            Color = WindowInfo.DynamicIslandGlowColor or "WhiteColor",
+            Thickness = BorderThickness + 2,
+            Transparency = DynamicIslandGlowEnabled and 0.84 or 1,
+            Parent = Island,
+        })
+        local OutlineStroke = New("UIStroke", {
+            Color = "AccentColor",
+            Thickness = BorderThickness,
+            Transparency = 0.04,
+            Parent = Island,
+        })
+        local OutlineGradient = Library:AddGradient(OutlineStroke, {
+            Color = function()
+                return ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                    ColorSequenceKeypoint.new(0.45, Library.Scheme.WhiteColor),
+                    ColorSequenceKeypoint.new(1, Library:GetBetterColor(Library.Scheme.AccentColor, 24)),
+                })
+            end,
+            Rotation = 0,
+        })
+
+        local LiquidGlassCorners = {}
+        local GlassClipLayer = New("Frame", {
+            Name = "DynamicIslandGlassClip",
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ClipsDescendants = true,
+            Position = UDim2.fromScale(0, 0),
+            Size = UDim2.fromScale(1, 1),
+            ZIndex = Island.ZIndex + 1,
+            Parent = Island,
+        })
+        local GlassClipCorner = New("UICorner", {
+            CornerRadius = ActiveCornerRadius,
+            Parent = GlassClipLayer,
+        })
+        table.insert(Library.Corners, GlassClipCorner)
+        table.insert(LiquidGlassCorners, GlassClipCorner)
+
+        local GlassLayer = New("Frame", {
+            BackgroundColor3 = "WhiteColor",
+            BackgroundTransparency = IOSGlassStyle and math.clamp(GlassTransparency - 0.04, 0, 1) or GlassTransparency,
+            BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1),
+            ZIndex = GlassClipLayer.ZIndex + 1,
+            Parent = GlassClipLayer,
+        })
+        local GlassCorner = New("UICorner", { CornerRadius = ActiveCornerRadius, Parent = GlassLayer })
+        table.insert(Library.Corners, GlassCorner)
+        local IslandGradient = Library:AddGradient(GlassLayer, {
+            Color = function()
+                return ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Library.Scheme.WhiteColor),
+                    ColorSequenceKeypoint.new(0.42, Library:GetBetterColor(Library.Scheme.MainColor, 18)),
+                    ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor),
+                })
+            end,
+            Rotation = 18,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, IOSGlassStyle and 0.7 or 0.62),
+                NumberSequenceKeypoint.new(0.46, IOSGlassStyle and 0.94 or 0.92),
+                NumberSequenceKeypoint.new(1, IOSGlassStyle and 0.78 or 0.72),
+            }),
+        })
+
+        local ShineLayer = New("Frame", {
+            BackgroundColor3 = "WhiteColor",
+            BackgroundTransparency = 0.86,
+            BorderSizePixel = 0,
+            Size = UDim2.fromScale(1, 1),
+            ZIndex = GlassClipLayer.ZIndex + 2,
+            Parent = GlassClipLayer,
+        })
+        local ShineCorner = New("UICorner", { CornerRadius = ActiveCornerRadius, Parent = ShineLayer })
+        table.insert(Library.Corners, ShineCorner)
+        local ShineGradient = Library:AddGradient(ShineLayer, {
+            Color = function()
+                return ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Library.Scheme.WhiteColor),
+                    ColorSequenceKeypoint.new(0.5, Library:GetBetterColor(Library.Scheme.AccentColor, 32)),
+                    ColorSequenceKeypoint.new(1, Library.Scheme.WhiteColor),
+                })
+            end,
+            Offset = Vector2.new(-1, 0),
+            Rotation = 28,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 1),
+                NumberSequenceKeypoint.new(0.36, 1),
+                NumberSequenceKeypoint.new(0.5, IOSGlassStyle and 0.7 or 0.58),
+                NumberSequenceKeypoint.new(0.64, 1),
+                NumberSequenceKeypoint.new(1, 1),
+            }),
+        })
+
+        local function AddLiquidGlassLayer(Info)
+            if not LiquidGlassEnabled then
+                return nil
+            end
+
+            local Layer = New("Frame", {
+                BackgroundColor3 = Info.Color or "WhiteColor",
+                BackgroundTransparency = math.clamp(Info.Transparency or 0.86, 0, 1),
+                BorderSizePixel = 0,
+                Position = Info.Position,
+                Size = Info.Size,
+                ZIndex = GlassClipLayer.ZIndex + 3,
+                Parent = GlassClipLayer,
+            })
+            if Info.CornerRadius then
+                local Corner = New("UICorner", {
+                    CornerRadius = Info.CornerRadius,
+                    Parent = Layer,
+                })
+                table.insert(Library.Corners, Corner)
+                if Info.SyncCorner ~= false then
+                    table.insert(LiquidGlassCorners, Corner)
+                end
+            end
+            if Info.Gradient then
+                Library:AddGradient(Layer, Info.Gradient)
+            end
+            return Layer
+        end
+
+        AddLiquidGlassLayer({
+            Color = "WhiteColor",
+            Position = UDim2.fromScale(0, 0),
+            Size = UDim2.fromScale(1, 1),
+            Transparency = math.clamp(
+                (IOSGlassStyle and 0.94 or 0.91) - (LiquidGlassIntensity * (IOSGlassStyle and 0.025 or 0.04)),
+                0.84,
+                0.97
+            ),
+            CornerRadius = ActiveCornerRadius,
+            Gradient = {
+                Color = function()
+                    return ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Library:GetBetterColor(Library.Scheme.AccentColor, 38)),
+                        ColorSequenceKeypoint.new(0.48, Library.Scheme.WhiteColor),
+                        ColorSequenceKeypoint.new(1, Library:GetBetterColor(Library.Scheme.MainColor, 26)),
+                    })
+                end,
+                Rotation = IOSGlassStyle and 34 or 18,
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, IOSGlassStyle and 0.86 or 0.78),
+                    NumberSequenceKeypoint.new(0.48, IOSGlassStyle and 0.95 or 0.92),
+                    NumberSequenceKeypoint.new(1, IOSGlassStyle and 0.88 or 0.84),
+                }),
+            },
+        })
+        AddLiquidGlassLayer({
+            Color = "WhiteColor",
+            Position = UDim2.fromOffset(3, 1),
+            Size = UDim2.new(1, -6, 0, math.max(8, math.floor(TopbarHeight * 0.28))),
+            Transparency = math.clamp(0.82 - (LiquidGlassIntensity * 0.045), 0.7, 0.9),
+            CornerRadius = ActiveCornerRadius,
+            Gradient = {
+                Color = function()
+                    return ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Library.Scheme.WhiteColor),
+                        ColorSequenceKeypoint.new(0.55, Library:GetBetterColor(Library.Scheme.AccentColor, 45)),
+                        ColorSequenceKeypoint.new(1, Library.Scheme.WhiteColor),
+                    })
+                end,
+                Rotation = 90,
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, IOSGlassStyle and 0.48 or 0.28),
+                    NumberSequenceKeypoint.new(0.45, IOSGlassStyle and 0.84 or 0.74),
+                    NumberSequenceKeypoint.new(1, 1),
+                }),
+            },
+        })
+        AddLiquidGlassLayer({
+            Color = "DarkColor",
+            Position = UDim2.new(0, 3, 1, -math.max(8, math.floor(TopbarHeight * 0.28))),
+            Size = UDim2.new(1, -6, 0, math.max(8, math.floor(TopbarHeight * 0.28))),
+            Transparency = IOSGlassStyle and 0.94 or 0.88,
+            CornerRadius = ActiveCornerRadius,
+            Gradient = {
+                Color = function()
+                    return ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                        ColorSequenceKeypoint.new(1, Library.Scheme.DarkColor),
+                    })
+                end,
+                Rotation = -90,
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 1),
+                    NumberSequenceKeypoint.new(0.5, 0.78),
+                    NumberSequenceKeypoint.new(1, 0.42),
+                }),
+            },
+        })
+        AddLiquidGlassLayer({
+            Position = UDim2.fromOffset(4, 2),
+            Size = UDim2.new(1, -8, 0, math.max(3, math.floor(TopbarHeight * 0.18))),
+            Transparency = math.clamp(0.88 - (LiquidGlassIntensity * 0.04), 0.76, 0.94),
+            CornerRadius = UDim.new(1, 0),
+            SyncCorner = false,
+            Gradient = {
+                Color = function()
+                    return ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Library.Scheme.WhiteColor),
+                        ColorSequenceKeypoint.new(0.58, Library:GetBetterColor(Library.Scheme.AccentColor, 30)),
+                        ColorSequenceKeypoint.new(1, Library.Scheme.WhiteColor),
+                    })
+                end,
+                Rotation = 0,
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.34),
+                    NumberSequenceKeypoint.new(0.55, 0.72),
+                    NumberSequenceKeypoint.new(1, 0.94),
+                }),
+            },
+        })
+        if LegacyGlassStyle then
+            local LiquidEdgeTransparency = math.clamp(0.78 - (LiquidGlassIntensity * 0.1), 0.58, 0.9)
+            AddLiquidGlassLayer({
+                Color = "DarkColor",
+                Position = UDim2.new(0, 5, 1, -math.max(5, math.floor(TopbarHeight * 0.2))),
+                Size = UDim2.new(1, -10, 0, math.max(5, math.floor(TopbarHeight * 0.2))),
+                Transparency = 0.9,
+                CornerRadius = UDim.new(1, 0),
+                SyncCorner = false,
+                Gradient = {
+                    Color = function()
+                        return ColorSequence.new({
+                            ColorSequenceKeypoint.new(0, Library.Scheme.AccentColor),
+                            ColorSequenceKeypoint.new(1, Library.Scheme.DarkColor),
+                        })
+                    end,
+                    Rotation = 90,
+                    Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 0.92),
+                        NumberSequenceKeypoint.new(1, 0.5),
+                    }),
+                },
+            })
+            AddLiquidGlassLayer({
+                Color = Color3.fromRGB(95, 238, 255),
+                Position = UDim2.fromOffset(2, 4),
+                Size = UDim2.new(0, math.max(1, math.floor(2 * LiquidGlassIntensity)), 1, -8),
+                Transparency = LiquidEdgeTransparency,
+                CornerRadius = UDim.new(1, 0),
+                SyncCorner = false,
+            })
+            AddLiquidGlassLayer({
+                Color = Color3.fromRGB(255, 106, 232),
+                Position = UDim2.new(1, -math.max(4, math.floor(4 * LiquidGlassIntensity)), 0, 4),
+                Size = UDim2.new(0, math.max(1, math.floor(2 * LiquidGlassIntensity)), 1, -8),
+                Transparency = math.clamp(LiquidEdgeTransparency + 0.04, 0, 1),
+                CornerRadius = UDim.new(1, 0),
+                SyncCorner = false,
+            })
+        end
+        local LiquidHoverLayer = AddLiquidGlassLayer({
+            Color = "WhiteColor",
+            Position = UDim2.fromScale(0, 0),
+            Size = UDim2.fromScale(1, 1),
+            Transparency = 1,
+            CornerRadius = ActiveCornerRadius,
+            Gradient = {
+                Color = function()
+                    return ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Library.Scheme.WhiteColor),
+                        ColorSequenceKeypoint.new(0.5, Library:GetBetterColor(Library.Scheme.AccentColor, 48)),
+                        ColorSequenceKeypoint.new(1, Library.Scheme.WhiteColor),
+                    })
+                end,
+                Offset = Vector2.zero,
+                Rotation = 32,
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.82),
+                    NumberSequenceKeypoint.new(0.45, 0.93),
+                    NumberSequenceKeypoint.new(1, 1),
+                }),
+            },
+        })
+        local LiquidHoverGradient = LiquidHoverLayer and LiquidHoverLayer:FindFirstChildOfClass("UIGradient")
+        local LiquidSecondaryBorder
+        local LiquidSecondaryCorner
+        if LiquidGlassEnabled then
+            LiquidSecondaryBorder = New("Frame", {
+                BackgroundTransparency = 1,
+                Position = UDim2.fromOffset(2, 2),
+                Size = UDim2.new(1, -4, 1, -4),
+                ZIndex = GlassClipLayer.ZIndex + 4,
+                Parent = GlassClipLayer,
+            })
+            LiquidSecondaryCorner = New("UICorner", {
+                CornerRadius = UDim.new(ActiveCornerRadius.Scale, math.max(0, ActiveCornerRadius.Offset - 2)),
+                Parent = LiquidSecondaryBorder,
+            })
+            table.insert(Library.Corners, LiquidSecondaryCorner)
+            table.insert(LiquidGlassCorners, LiquidSecondaryCorner)
+            local SecondaryStroke = New("UIStroke", {
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                Color = "WhiteColor",
+                Thickness = math.max(0.5, BorderThickness * 0.58),
+                Transparency = 0.72,
+                Parent = LiquidSecondaryBorder,
+            })
+            Library:AddGradient(SecondaryStroke, {
+                Color = function()
+                    return ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Library.Scheme.WhiteColor),
+                        ColorSequenceKeypoint.new(0.42, Library:GetBetterColor(Library.Scheme.AccentColor, 42)),
+                        ColorSequenceKeypoint.new(1, Library.Scheme.WhiteColor),
+                    })
+                end,
+                Rotation = 135,
+                Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.78),
+                    NumberSequenceKeypoint.new(0.5, 0.24),
+                    NumberSequenceKeypoint.new(1, 0.82),
+                }),
+            })
+        end
+
+        local AssetHolder = New("Frame", {
+            AnchorPoint = Vector2.new(0, 0.5),
+            BackgroundTransparency = 1,
+            ClipsDescendants = true,
+            Position = UDim2.new(0, 10, 0.5, 0),
+            Size = AssetSize,
+            ZIndex = Island.ZIndex + 2,
+            Parent = Island,
+        })
+        table.insert(Library.Corners, New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = AssetHolder }))
+
+        local AssetImage = New("ImageLabel", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundTransparency = 1,
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromScale(1, 1),
+            ZIndex = AssetHolder.ZIndex + 1,
+            Parent = AssetHolder,
+        })
+
+        local TextHolder = New("Frame", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, TextLeft, 0, 4),
+            Size = UDim2.new(1, -(TextLeft + LockIconWidth + 13), 1, -8),
+            ZIndex = Island.ZIndex + 2,
+            Parent = Island,
+        })
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Padding = UDim.new(0, 1),
+            Parent = TextHolder,
+        })
+
+        local TitleLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 15),
+            FontFace = IslandFont,
+            Text = WindowInfo.DynamicIslandText or WindowInfo.Title or "Obsidian",
+            TextSize = math.clamp(TopbarHeight * 0.31, 11, 14),
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = TextHolder.ZIndex + 1,
+            Parent = TextHolder,
+        })
+        local StatusLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 12),
+            FontFace = IslandFont,
+            Text = WindowInfo.DynamicIslandClosedText or WindowInfo.DynamicIslandSubtitle or "Menu closed",
+            TextSize = math.clamp(TopbarHeight * 0.22, 8, 10),
+            TextTransparency = 0.45,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = TextHolder.ZIndex + 1,
+            Parent = TextHolder,
+        })
+
+        local StatusDot = New("ImageLabel", {
+            Name = "LockIcon",
+            AnchorPoint = Vector2.new(1, 0.5),
+            BackgroundTransparency = 1,
+            ImageColor3 = "WhiteColor",
+            ImageTransparency = 0.16,
+            Position = UDim2.new(1, -11, 0.5, 0),
+            Size = LockIconSize,
+            ZIndex = Island.ZIndex + 2,
+            Parent = Island,
+        })
+
+        local NormalAssetPosition = AssetHolder.Position
+        local NormalTextPosition = TextHolder.Position
+        local NormalTextSize = TextHolder.Size
+        local NormalStatusPosition = StatusDot.Position
+        local ActionTopCenterY = math.floor(TopbarHeight * 0.5)
+        local ActionAssetPosition = UDim2.new(0, 10, 0, ActionTopCenterY)
+        local ActionTextPosition = UDim2.new(0, TextLeft, 0, 4)
+        local ActionTextSize = UDim2.new(1, -(TextLeft + LockIconWidth + 13), 0, math.max(12, TopbarHeight - 8))
+        local ActionStatusPosition = UDim2.new(1, -11, 0, ActionTopCenterY)
+        local ActionContainer = New("Frame", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 7, 0, TopbarHeight + 6),
+            Size = UDim2.new(1, -14, 1, -(TopbarHeight + 12)),
+            Visible = false,
+            ZIndex = Island.ZIndex + 4,
+            Parent = Island,
+        })
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalFlex = Enum.UIFlexAlignment.Fill,
+            Padding = UDim.new(0, 5),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Parent = ActionContainer,
+        })
+        local ActionButtonRecords = {}
+        local PanelGrabBarPosition = GetPanelGrabBarPosition(ActionPosition, ActionSize)
+        local PanelGrabBar = New("TextButton", {
+            Name = "DynamicIslandPanelGrabBar",
+            Active = true,
+            AnchorPoint = Vector2.new(0.5, 1),
+            AutoButtonColor = false,
+            BackgroundColor3 = "WhiteColor",
+            BackgroundTransparency = 1,
+            Position = PanelGrabBarPosition,
+            Selectable = false,
+            Size = UDim2.fromOffset(68, 5),
+            Text = "",
+            Visible = false,
+            ZIndex = 60000,
+            Parent = DynamicIslandOverlayGui,
+        })
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(1, 0),
+                Parent = PanelGrabBar,
+            })
+        )
+        Library:AddGradient(PanelGrabBar, {
+            Color = function()
+                return ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Library.Scheme.WhiteColor),
+                    ColorSequenceKeypoint.new(0.5, Library:GetBetterColor(Library.Scheme.AccentColor, 35)),
+                    ColorSequenceKeypoint.new(1, Library.Scheme.WhiteColor),
+                })
+            end,
+            Rotation = 0,
+            Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.24),
+                NumberSequenceKeypoint.new(0.5, 0),
+                NumberSequenceKeypoint.new(1, 0.24),
+            }),
+        })
+        Library:AddShadowGlow(PanelGrabBar, {
+            Name = "DynamicIslandGrabBarGlow",
+            Color = WindowInfo.DynamicIslandGlowColor or "WhiteColor",
+            Transparency = 0.82,
+            Size = 8,
+            Offset = Vector2.zero,
+            ZIndex = PanelGrabBar.ZIndex - 1,
+        })
+
+        local Controller = {
+            Holder = Island,
+            AssetImage = AssetImage,
+            TitleLabel = TitleLabel,
+            StatusLabel = StatusLabel,
+            StatusDot = StatusDot,
+        }
+        local IdleToken = 0
+        local PressToken = 0
+        local IsIdle = false
+        local IsPressing = false
+        local ActionMenuOpen = false
+        local ActionMenuToken = 0
+        local ContentVisibilityToken = 0
+        local LockedIcon = ResolveDynamicIslandAsset(WindowInfo.DynamicIslandLockedIcon or DynamicIslandLockedIconUrl)
+        local UnlockedIcon =
+            ResolveDynamicIslandAsset(WindowInfo.DynamicIslandUnlockedIcon or DynamicIslandUnlockedIconUrl)
+
+        local function ApplyImageLabelIcon(Label: ImageLabel, Icon)
+            if not Icon then
+                Label.Image = ""
+                return
+            end
+
+            Label.Image = Icon.Url or ""
+            Label.ImageRectOffset = Icon.ImageRectOffset or Vector2.zero
+            Label.ImageRectSize = Icon.ImageRectSize or Vector2.zero
+        end
+
+        local DragHintHolder = New("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            BackgroundTransparency = 1,
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.new(1, -14, 1, -4),
+            Visible = false,
+            ZIndex = Island.ZIndex + 6,
+            Parent = Island,
+        })
+        local DragHintScale = New("UIScale", {
+            Scale = 0.94,
+            Parent = DragHintHolder,
+        })
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            Padding = UDim.new(0, 6),
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Parent = DragHintHolder,
+        })
+        local DragHintArrows = New("TextLabel", {
+            AutomaticSize = Enum.AutomaticSize.X,
+            BackgroundTransparency = 1,
+            FontFace = IslandFont,
+            Size = UDim2.new(0, 0, 1, 0),
+            Text = "› ›",
+            TextColor3 = "AccentColor",
+            TextSize = math.clamp(TopbarHeight * 0.32, 11, 14),
+            TextTransparency = 1,
+            ZIndex = DragHintHolder.ZIndex + 1,
+            Parent = DragHintHolder,
+        })
+        local DragHintUnlock = New("ImageLabel", {
+            BackgroundTransparency = 1,
+            ImageColor3 = "WhiteColor",
+            ImageTransparency = 1,
+            Size = UDim2.fromOffset(13, 13),
+            ZIndex = DragHintHolder.ZIndex + 1,
+            Parent = DragHintHolder,
+        })
+        local DragHintDash = New("TextLabel", {
+            AutomaticSize = Enum.AutomaticSize.X,
+            BackgroundTransparency = 1,
+            FontFace = IslandFont,
+            Size = UDim2.new(0, 0, 1, 0),
+            Text = "-",
+            TextColor3 = "FontColor",
+            TextSize = math.clamp(TopbarHeight * 0.28, 10, 12),
+            TextTransparency = 1,
+            ZIndex = DragHintHolder.ZIndex + 1,
+            Parent = DragHintHolder,
+        })
+        local DragHintLock = New("ImageLabel", {
+            BackgroundTransparency = 1,
+            ImageColor3 = "WhiteColor",
+            ImageTransparency = 1,
+            Size = UDim2.fromOffset(13, 13),
+            ZIndex = DragHintHolder.ZIndex + 1,
+            Parent = DragHintHolder,
+        })
+        ApplyImageLabelIcon(DragHintUnlock, UnlockedIcon)
+        ApplyImageLabelIcon(DragHintLock, LockedIcon)
+
+        local function SetDragHintVisible(Visible: boolean, Direction: number?)
+            Visible = Visible == true
+            DragHintArrows.Text = (Direction or 1) < 0 and "‹ ‹" or "› ›"
+            if DragHintHolder.Visible == Visible then
+                return
+            end
+
+            DragHintHolder.Visible = true
+            AssetHolder.Visible = not Visible
+            TextHolder.Visible = not Visible
+            StatusDot.Visible = not Visible
+
+            local TargetTransparency = Visible and 0 or 1
+            local TweenSpec = TweenInfo.new(0.14, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+            TweenService:Create(DragHintScale, TweenSpec, {
+                Scale = Visible and 1 or 0.94,
+            }):Play()
+            TweenService:Create(DragHintArrows, TweenSpec, {
+                TextTransparency = TargetTransparency,
+            }):Play()
+            TweenService:Create(DragHintUnlock, TweenSpec, {
+                ImageTransparency = TargetTransparency,
+            }):Play()
+            TweenService:Create(DragHintDash, TweenSpec, {
+                TextTransparency = math.clamp(TargetTransparency + 0.18, 0, 1),
+            }):Play()
+            TweenService:Create(DragHintLock, TweenSpec, {
+                ImageTransparency = TargetTransparency,
+            }):Play()
+
+            if not Visible then
+                task.delay(0.16, function()
+                    if DragHintArrows.TextTransparency >= 0.98 then
+                        DragHintHolder.Visible = false
+                    end
+                end)
+            end
+        end
+
+        local function SetLockVisual(Locked: boolean)
+            ApplyImageLabelIcon(StatusDot, Locked and LockedIcon or UnlockedIcon)
+            StatusDot.ImageColor3 = Library.Scheme.WhiteColor
+            StatusDot.ImageTransparency = IsIdle and 0.34 or (Locked and 0.04 or 0.18)
+        end
+
+        local SetActionMenuOpen
+        local function ResolveActionIcon(Icon)
+            if not Icon then
+                return nil
+            end
+
+            if typeof(Icon) == "table" and Icon.Url then
+                return Icon
+            end
+
+            local IconType = typeof(Icon)
+            if
+                IconType == "number"
+                or (IconType == "string" and (tonumber(Icon) or IsHttpUrl(Icon) or Icon:find("^rbxasset")))
+            then
+                return ResolveDynamicIslandAsset(Icon)
+            end
+
+            if IconType == "string" then
+                return Library:GetCustomIcon(Icon)
+            end
+
+            return nil
+        end
+
+        local function SetActionButtonTransparency(Record, Transparency: number, Instant: boolean?)
+            local ButtonTransparency = math.clamp(Transparency + 0.22, 0, 1)
+            local OutlineTransparency = math.clamp(Transparency + 0.36, 0, 1)
+            if Instant then
+                Record.Button.BackgroundTransparency = ButtonTransparency
+                Record.Label.TextTransparency = Transparency
+                if Record.Icon then
+                    Record.Icon.ImageTransparency = Transparency
+                end
+                if Record.Outline then
+                    Record.Outline.Transparency = OutlineTransparency
+                end
+                return
+            end
+
+            local FadeInfo = TweenInfo.new(0.18, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+            TweenService:Create(Record.Button, FadeInfo, {
+                BackgroundTransparency = ButtonTransparency,
+            }):Play()
+            TweenService:Create(Record.Label, FadeInfo, {
+                TextTransparency = Transparency,
+            }):Play()
+            if Record.Icon then
+                TweenService:Create(Record.Icon, FadeInfo, {
+                    ImageTransparency = Transparency,
+                }):Play()
+            end
+            if Record.Outline then
+                TweenService:Create(Record.Outline, FadeInfo, {
+                    Transparency = OutlineTransparency,
+                }):Play()
+            end
+        end
+
+        local function SetAllActionButtonsTransparency(Transparency: number, Instant: boolean?)
+            for _, Record in ActionButtonRecords do
+                SetActionButtonTransparency(Record, Transparency, Instant)
+            end
+        end
+
+        local ClipDescendantsToken = 0
+        local function SetIslandClipDescendants(Enabled: boolean, DelayTime: number?)
+            ClipDescendantsToken += 1
+            local CurrentToken = ClipDescendantsToken
+
+            if DelayTime and DelayTime > 0 then
+                task.delay(DelayTime, function()
+                    if CurrentToken == ClipDescendantsToken and Island.Parent then
+                        Island.ClipsDescendants = Enabled == true
+                    end
+                end)
+                return
+            end
+
+            Island.ClipsDescendants = Enabled == true
+        end
+
+        local function SetLiquidGlassCorner(CornerRadius: UDim, TweenTime: number?)
+            for _, Corner in LiquidGlassCorners do
+                if Corner.Parent then
+                    local TargetRadius = Corner == LiquidSecondaryCorner
+                            and UDim.new(CornerRadius.Scale, math.max(0, CornerRadius.Offset - 2))
+                        or CornerRadius
+
+                    if TweenTime and TweenTime > 0 then
+                        Library:TweenUICornerRadii(
+                            Corner,
+                            TweenInfo.new(TweenTime, Enum.EasingStyle.Sine),
+                            TargetRadius
+                        )
+                    else
+                        Library:SetUICornerRadii(Corner, TargetRadius)
+                    end
+                end
+            end
+        end
+
+        local function CreateActionButton(Name: string, Text: string, Icon, Callback, Order: number)
+            local Button = New("TextButton", {
+                AutoButtonColor = false,
+                BackgroundColor3 = "MainColor",
+                BackgroundTransparency = 1,
+                LayoutOrder = Order,
+                Size = UDim2.new(0, 0, 1, 0),
+                Text = "",
+                ZIndex = ActionContainer.ZIndex + 1,
+                Parent = ActionContainer,
+            })
+            table.insert(
+                Library.Corners,
+                New("UICorner", {
+                    CornerRadius = UDim.new(0, math.max(6, math.floor(TopbarHeight * 0.22))),
+                    Parent = Button,
+                })
+            )
+            local OutlineStroke = Library:AddOutline(Button, {
+                Color = "AccentColor",
+                Transparency = 1,
+                ShadowTransparency = 1,
+            })
+
+            local ParsedIcon = ResolveActionIcon(Icon)
+            local IconLabel
+            local LabelX = 0
+            if ParsedIcon then
+                LabelX = 20
+                IconLabel = New("ImageLabel", {
+                    AnchorPoint = Vector2.new(0, 0.5),
+                    BackgroundTransparency = 1,
+                    Image = ParsedIcon.Url,
+                    ImageColor3 = ParsedIcon.Custom and "WhiteColor" or "AccentColor",
+                    ImageRectOffset = ParsedIcon.ImageRectOffset,
+                    ImageRectSize = ParsedIcon.ImageRectSize,
+                    ImageTransparency = 1,
+                    Position = UDim2.new(0, 7, 0.5, 0),
+                    Size = UDim2.fromOffset(13, 13),
+                    ZIndex = Button.ZIndex + 1,
+                    Parent = Button,
+                })
+            end
+
+            local Label = New("TextLabel", {
+                BackgroundTransparency = 1,
+                FontFace = IslandFont,
+                Position = UDim2.fromOffset(LabelX, 0),
+                Size = UDim2.new(1, -LabelX, 1, 0),
+                Text = Text,
+                TextColor3 = "FontColor",
+                TextSize = math.clamp(TopbarHeight * 0.28, 9, 11),
+                TextTransparency = 1,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                ZIndex = Button.ZIndex + 1,
+                Parent = Button,
+            })
+            New("UIPadding", {
+                PaddingLeft = UDim.new(0, ParsedIcon and 4 or 7),
+                PaddingRight = UDim.new(0, 7),
+                Parent = Label,
+            })
+
+            local Record = {
+                Button = Button,
+                Icon = IconLabel,
+                Label = Label,
+                Outline = OutlineStroke,
+                SetText = function(_, NewText)
+                    Label.Text = tostring(NewText or "")
+                end,
+                SetIcon = function(_, NewIcon)
+                    local NewParsedIcon = ResolveActionIcon(NewIcon)
+                    if not IconLabel or not NewParsedIcon then
+                        return
+                    end
+
+                    IconLabel.Image = NewParsedIcon.Url
+                    IconLabel.ImageColor3 = NewParsedIcon.Custom and Library.Scheme.WhiteColor
+                        or Library.Scheme.AccentColor
+                    IconLabel.ImageRectOffset = NewParsedIcon.ImageRectOffset
+                    IconLabel.ImageRectSize = NewParsedIcon.ImageRectSize
+                end,
+            }
+            table.insert(ActionButtonRecords, Record)
+
+            Button.MouseEnter:Connect(function()
+                TweenService:Create(Button, TweenInfo.new(0.14, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                    BackgroundTransparency = 0.12,
+                }):Play()
+            end)
+            Button.MouseLeave:Connect(function()
+                TweenService:Create(Button, TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                    BackgroundTransparency = ActionMenuOpen and 0.22 or 1,
+                }):Play()
+            end)
+            Button.MouseButton1Click:Connect(function()
+                if not ActionMenuOpen then
+                    return
+                end
+
+                ActionMenuToken += 1
+                Library:SafeCallback(Callback, Controller, Record)
+            end)
+
+            return Record
+        end
+
+        local DestroyAction = CreateActionButton(
+            "Destroy",
+            WindowInfo.DynamicIslandDestroyText or "Destroy UI",
+            WindowInfo.DynamicIslandDestroyIcon or "trash-2",
+            function()
+                Library:Unload()
+            end,
+            1
+        )
+        local LockAction = CreateActionButton(
+            "Lock",
+            "Lock",
+            WindowInfo.DynamicIslandLockedIcon or LockedIcon,
+            function()
+                Library.CantDragForced = not Library.CantDragForced
+                Controller:SetLocked(Library.CantDragForced)
+                if SetActionMenuOpen then
+                    SetActionMenuOpen(false)
+                end
+                Controller:ScheduleIdle()
+            end,
+            2
+        )
+        local ToggleAction = CreateActionButton("Toggle", "Hide", "eye-off", function()
+            Library:Toggle()
+            if SetActionMenuOpen then
+                SetActionMenuOpen(false)
+            end
+            Controller:ScheduleIdle()
+        end, 3)
+
+        local function RefreshActionButtons()
+            LockAction:SetText(Library.CantDragForced and "Unlock" or "Lock")
+            LockAction:SetIcon(
+                Library.CantDragForced and (WindowInfo.DynamicIslandUnlockedIcon or UnlockedIcon)
+                    or (WindowInfo.DynamicIslandLockedIcon or LockedIcon)
+            )
+            ToggleAction:SetText(Library.Toggled and "Hide" or "Show")
+            ToggleAction:SetIcon(Library.Toggled and "eye-off" or "eye")
+        end
+
+        SetAllActionButtonsTransparency(1, true)
+
+        local function SetIslandContentVisible(Visible: boolean)
+            if not HideContentWhenIdle then
+                Visible = true
+            end
+
+            AssetHolder.Visible = Visible
+            TextHolder.Visible = Visible
+            StatusDot.Visible = Visible
+        end
+
+        local function SetIslandIdleState(Idle, Instant)
+            if ActionMenuOpen then
+                return
+            end
+
+            SetIslandClipDescendants(true)
+            IsIdle = Idle == true
+            ContentVisibilityToken += 1
+            local CurrentContentVisibilityToken = ContentVisibilityToken
+            if not IsIdle or not HideContentWhenIdle then
+                SetIslandContentVisible(true)
+            end
+
+            local TargetSize = IsIdle and IdleSize or (Library.Toggled and ExpandedSize or CollapsedSize)
+            local TargetPosition = IsIdle and IdlePosition or ActivePosition
+            local TargetTransparency = IsIdle and IdleTransparency or BaseTransparency
+            local TargetBorderTransparency = IsIdle and 0.22 or (Library.Toggled and 0.01 or 0.04)
+            local TargetGlowTransparency = if DynamicIslandGlowEnabled
+                then (IsIdle and 0.9 or (Library.Toggled and 0.72 or 0.82))
+                else 1
+            local TargetImageGlowTransparency = if DynamicIslandGlowEnabled
+                then (IsIdle and 1 or DynamicIslandGlowTransparency)
+                else 1
+            local TargetShadowTransparency = IsIdle and 1 or DynamicIslandShadowTransparency
+            local TargetGlassTransparency = math.clamp(GlassTransparency + (IsIdle and 0.05 or 0), 0, 1)
+            local TargetShineTransparency = IsIdle and 0.94 or 0.86
+            local TargetCornerRadius = IsIdle and IdleCornerRadius or ActiveCornerRadius
+            local TargetTitleTransparency = IsIdle and 1 or 0
+            local TargetStatusTransparency = IsIdle and 1 or 0.45
+            local TargetIconTransparency = IsIdle and 1 or 0
+            local TargetLockTransparency = IsIdle and 1 or (Library.CantDragForced and 0.04 or 0.18)
+            local TweenTime = Instant and 0 or (IsIdle and 0.34 or 0.24)
+
+            if Instant then
+                Island.Size = TargetSize
+                Island.Position = TargetPosition
+                Island.BackgroundTransparency = TargetTransparency
+                OutlineStroke.Transparency = TargetBorderTransparency
+                OuterGlowStroke.Transparency = TargetGlowTransparency
+                if IslandImageGlow then
+                    Library:SetShadowGlowTransparency(IslandImageGlow, TargetImageGlowTransparency)
+                end
+                if IslandShadow then
+                    Library:SetShadowGlowTransparency(IslandShadow, TargetShadowTransparency)
+                end
+                GlassLayer.BackgroundTransparency = TargetGlassTransparency
+                ShineLayer.BackgroundTransparency = TargetShineTransparency
+                Library:SetUICornerRadii(IslandCorner, TargetCornerRadius)
+                Library:SetUICornerRadii(GlassCorner, TargetCornerRadius)
+                Library:SetUICornerRadii(ShineCorner, TargetCornerRadius)
+                SetLiquidGlassCorner(TargetCornerRadius, 0)
+                TitleLabel.TextTransparency = TargetTitleTransparency
+                StatusLabel.TextTransparency = TargetStatusTransparency
+                AssetImage.ImageTransparency = TargetIconTransparency
+                StatusDot.ImageTransparency = TargetLockTransparency
+                SetIslandContentVisible(not IsIdle or not HideContentWhenIdle)
+                return
+            end
+
+            TweenService:Create(Island, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = TargetTransparency,
+                Position = TargetPosition,
+                Size = TargetSize,
+            }):Play()
+            TweenService
+                :Create(OutlineStroke, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Transparency = TargetBorderTransparency,
+                })
+                :Play()
+            TweenService
+                :Create(OuterGlowStroke, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Transparency = TargetGlowTransparency,
+                })
+                :Play()
+            if IslandImageGlow then
+                Library:TweenShadowGlowTransparency(
+                    IslandImageGlow,
+                    TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    TargetImageGlowTransparency
+                )
+            end
+            if IslandShadow then
+                Library:TweenShadowGlowTransparency(
+                    IslandShadow,
+                    TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    TargetShadowTransparency
+                )
+            end
+            TweenService
+                :Create(GlassLayer, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    BackgroundTransparency = TargetGlassTransparency,
+                })
+                :Play()
+            TweenService
+                :Create(ShineLayer, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    BackgroundTransparency = TargetShineTransparency,
+                })
+                :Play()
+            local CornerTweenInfo = TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            Library:TweenUICornerRadii(IslandCorner, CornerTweenInfo, TargetCornerRadius)
+            Library:TweenUICornerRadii(GlassCorner, CornerTweenInfo, TargetCornerRadius)
+            Library:TweenUICornerRadii(ShineCorner, CornerTweenInfo, TargetCornerRadius)
+            SetLiquidGlassCorner(TargetCornerRadius, TweenTime)
+            TweenService
+                :Create(TitleLabel, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    TextTransparency = TargetTitleTransparency,
+                })
+                :Play()
+            TweenService
+                :Create(StatusLabel, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    TextTransparency = TargetStatusTransparency,
+                })
+                :Play()
+            TweenService
+                :Create(AssetImage, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    ImageTransparency = TargetIconTransparency,
+                })
+                :Play()
+            TweenService:Create(StatusDot, TweenInfo.new(TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                ImageTransparency = TargetLockTransparency,
+            }):Play()
+
+            if IsIdle and HideContentWhenIdle then
+                task.delay(TweenTime + 0.03, function()
+                    if CurrentContentVisibilityToken == ContentVisibilityToken and IsIdle then
+                        SetIslandContentVisible(false)
+                    end
+                end)
+            end
+        end
+
+        SetActionMenuOpen = function(Open: boolean, Instant: boolean?)
+            if not ActionMenuEnabled then
+                return
+            end
+
+            Open = Open == true
+            if ActionMenuOpen == Open and not Instant then
+                return
+            end
+
+            ActionMenuOpen = Open
+            ActionMenuToken += 1
+            local CurrentActionMenuToken = ActionMenuToken
+            ContentVisibilityToken += 1
+
+            if Open then
+                IsIdle = false
+                StatusLabel.Text = WindowInfo.DynamicIslandActionsText or "Quick actions"
+                RefreshActionButtons()
+                SetIslandContentVisible(true)
+                ActionContainer.Visible = true
+                PanelGrabBar.Visible = true
+            else
+                StatusLabel.Text = Library.CantDragForced and (WindowInfo.DynamicIslandLockedText or "Locked")
+                    or (
+                        Library.Toggled and (WindowInfo.DynamicIslandOpenText or "Menu open")
+                        or (WindowInfo.DynamicIslandClosedText or WindowInfo.DynamicIslandSubtitle or "Menu closed")
+                    )
+                SetIslandContentVisible(true)
+            end
+
+            local TargetSize = Open and ActionSize or (Library.Toggled and ExpandedSize or CollapsedSize)
+            local TargetPosition = Open and ActionPosition or ActivePosition
+            local TargetGlowTransparency = if DynamicIslandGlowEnabled
+                then (Open and 0.62 or (Library.Toggled and 0.72 or 0.82))
+                else 1
+            local TargetImageGlowTransparency = if DynamicIslandGlowEnabled
+                then (Open and math.max(0, DynamicIslandGlowTransparency - 0.08) or DynamicIslandGlowTransparency)
+                else 1
+            local TargetShadowTransparency = Open and DynamicIslandShadowTransparency or DynamicIslandShadowTransparency
+            local TargetGlassTransparency = Open and math.max(0, GlassTransparency - 0.05) or GlassTransparency
+            local TargetShineTransparency = Open and 0.78 or 0.86
+            local TargetCornerRadius = Open and PanelCornerRadius or ActiveCornerRadius
+            local TweenTime = Instant and 0 or (Open and 0.36 or 0.28)
+            local TweenStyle = Enum.EasingStyle.Quint
+            local TweenDirection = Enum.EasingDirection.Out
+            local TweenSpec = TweenInfo.new(TweenTime, TweenStyle, TweenDirection)
+
+            if Open then
+                SetIslandClipDescendants(false)
+            else
+                SetIslandClipDescendants(true, Instant and 0 or TweenTime + 0.05)
+            end
+
+            local function ApplyInstant()
+                Island.Size = TargetSize
+                Island.Position = TargetPosition
+                Island.BackgroundTransparency = BaseTransparency
+                OutlineStroke.Transparency = Open and 0.01 or (Library.Toggled and 0.01 or 0.04)
+                OuterGlowStroke.Transparency = TargetGlowTransparency
+                if IslandImageGlow then
+                    Library:SetShadowGlowTransparency(IslandImageGlow, TargetImageGlowTransparency)
+                end
+                if IslandShadow then
+                    Library:SetShadowGlowTransparency(IslandShadow, TargetShadowTransparency)
+                end
+                GlassLayer.BackgroundTransparency = TargetGlassTransparency
+                ShineLayer.BackgroundTransparency = TargetShineTransparency
+                Library:SetUICornerRadii(IslandCorner, TargetCornerRadius)
+                Library:SetUICornerRadii(GlassCorner, TargetCornerRadius)
+                Library:SetUICornerRadii(ShineCorner, TargetCornerRadius)
+                SetLiquidGlassCorner(TargetCornerRadius, 0)
+                AssetHolder.Position = Open and ActionAssetPosition or NormalAssetPosition
+                TextHolder.Position = Open and ActionTextPosition or NormalTextPosition
+                TextHolder.Size = Open and ActionTextSize or NormalTextSize
+                StatusDot.Position = Open and ActionStatusPosition or NormalStatusPosition
+                TitleLabel.TextTransparency = 0
+                StatusLabel.TextTransparency = Open and 0.25 or 0.45
+                AssetImage.ImageTransparency = 0
+                StatusDot.ImageTransparency = Library.CantDragForced and 0.04 or 0.18
+                SetAllActionButtonsTransparency(Open and 0 or 1, true)
+                ActionContainer.Visible = Open
+                PanelGrabBar.BackgroundTransparency = Open and 0.16 or 1
+                PanelGrabBar.Position = GetPanelGrabBarPosition(TargetPosition, TargetSize)
+                PanelGrabBar.Visible = Open
+            end
+
+            if Instant then
+                ApplyInstant()
+            else
+                TweenService:Create(Island, TweenSpec, {
+                    BackgroundTransparency = BaseTransparency,
+                    Position = TargetPosition,
+                    Size = TargetSize,
+                }):Play()
+                TweenService:Create(OutlineStroke, TweenInfo.new(TweenTime, Enum.EasingStyle.Sine), {
+                    Transparency = Open and 0.01 or (Library.Toggled and 0.01 or 0.04),
+                }):Play()
+                TweenService:Create(OuterGlowStroke, TweenInfo.new(TweenTime, Enum.EasingStyle.Sine), {
+                    Transparency = TargetGlowTransparency,
+                }):Play()
+                if IslandImageGlow then
+                    Library:TweenShadowGlowTransparency(
+                        IslandImageGlow,
+                        TweenInfo.new(TweenTime, Enum.EasingStyle.Sine),
+                        TargetImageGlowTransparency
+                    )
+                end
+                if IslandShadow then
+                    Library:TweenShadowGlowTransparency(
+                        IslandShadow,
+                        TweenInfo.new(TweenTime, Enum.EasingStyle.Sine),
+                        TargetShadowTransparency
+                    )
+                end
+                TweenService:Create(GlassLayer, TweenInfo.new(TweenTime, Enum.EasingStyle.Sine), {
+                    BackgroundTransparency = TargetGlassTransparency,
+                }):Play()
+                TweenService:Create(ShineLayer, TweenInfo.new(TweenTime, Enum.EasingStyle.Sine), {
+                    BackgroundTransparency = TargetShineTransparency,
+                }):Play()
+                local CornerTweenInfo = TweenInfo.new(TweenTime, Enum.EasingStyle.Sine)
+                Library:TweenUICornerRadii(IslandCorner, CornerTweenInfo, TargetCornerRadius)
+                Library:TweenUICornerRadii(GlassCorner, CornerTweenInfo, TargetCornerRadius)
+                Library:TweenUICornerRadii(ShineCorner, CornerTweenInfo, TargetCornerRadius)
+                SetLiquidGlassCorner(TargetCornerRadius, TweenTime)
+                TweenService:Create(AssetHolder, TweenInfo.new(TweenTime, Enum.EasingStyle.Quint), {
+                    Position = Open and ActionAssetPosition or NormalAssetPosition,
+                }):Play()
+                TweenService:Create(TextHolder, TweenInfo.new(TweenTime, Enum.EasingStyle.Quint), {
+                    Position = Open and ActionTextPosition or NormalTextPosition,
+                    Size = Open and ActionTextSize or NormalTextSize,
+                }):Play()
+                TweenService:Create(StatusDot, TweenInfo.new(TweenTime, Enum.EasingStyle.Quint), {
+                    Position = Open and ActionStatusPosition or NormalStatusPosition,
+                    ImageTransparency = Library.CantDragForced and 0.04 or 0.18,
+                }):Play()
+                TweenService:Create(StatusLabel, TweenInfo.new(TweenTime, Enum.EasingStyle.Sine), {
+                    TextTransparency = Open and 0.25 or 0.45,
+                }):Play()
+                TweenService:Create(AssetImage, TweenInfo.new(TweenTime, Enum.EasingStyle.Sine), {
+                    ImageTransparency = 0,
+                }):Play()
+                TweenService:Create(PanelGrabBar, TweenInfo.new(TweenTime, Enum.EasingStyle.Sine), {
+                    BackgroundTransparency = Open and 0.16 or 1,
+                    Position = GetPanelGrabBarPosition(TargetPosition, TargetSize),
+                }):Play()
+                SetAllActionButtonsTransparency(Open and 0 or 1, Instant)
+            end
+
+            if Open then
+                task.delay(ActionAutoCloseDelay, function()
+                    if CurrentActionMenuToken ~= ActionMenuToken or not ActionMenuOpen or not Island.Parent then
+                        return
+                    end
+
+                    SetActionMenuOpen(false)
+                    Controller:ScheduleIdle()
+                end)
+            elseif Instant then
+                ActionContainer.Visible = false
+                PanelGrabBar.Visible = false
+                SetIslandClipDescendants(true)
+            else
+                task.delay(TweenTime + 0.04, function()
+                    if CurrentActionMenuToken == ActionMenuToken and not ActionMenuOpen then
+                        ActionContainer.Visible = false
+                        PanelGrabBar.Visible = false
+                        SetIslandClipDescendants(true)
+                    end
+                end)
+            end
+        end
+
+        local GradientAnimationToken = 0
+        local ActiveGradientTweens = {}
+        local function StopDynamicIslandGradientAnimation()
+            GradientAnimationToken += 1
+            for _, Tween in ActiveGradientTweens do
+                pcall(function()
+                    Tween:Cancel()
+                end)
+            end
+            table.clear(ActiveGradientTweens)
+        end
+
+        local function PlayDynamicIslandGradientAnimation()
+            if not GradientAnimationEnabled then
+                ShineLayer.Visible = false
+                return
+            end
+
+            GradientAnimationToken += 1
+            local CurrentGradientToken = GradientAnimationToken
+            local Direction = 1
+
+            local function PlayCycle()
+                if CurrentGradientToken ~= GradientAnimationToken or not Island.Parent then
+                    return
+                end
+
+                Direction *= -1
+                IslandGradient.Offset = Vector2.new(-0.5 * Direction, 0)
+                OutlineGradient.Offset = Vector2.new(-0.45 * Direction, 0)
+                ShineGradient.Offset = Vector2.new(-1.1 * Direction, 0)
+
+                local TweenStyle =
+                    TweenInfo.new(GradientAnimationSpeed, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+                local GlassTween = TweenService:Create(IslandGradient, TweenStyle, {
+                    Offset = Vector2.new(0.5 * Direction, 0),
+                    Rotation = 18 + (8 * Direction),
+                })
+                local OutlineTween = TweenService:Create(OutlineGradient, TweenStyle, {
+                    Offset = Vector2.new(0.45 * Direction, 0),
+                    Rotation = 8 * Direction,
+                })
+                local ShineTween = TweenService:Create(ShineGradient, TweenStyle, {
+                    Offset = Vector2.new(1.1 * Direction, 0),
+                    Rotation = 28 + (4 * Direction),
+                })
+
+                ActiveGradientTweens = { GlassTween, OutlineTween, ShineTween }
+                local CompletedConnection
+                CompletedConnection = GlassTween.Completed:Connect(function()
+                    if CompletedConnection then
+                        CompletedConnection:Disconnect()
+                    end
+                    if CurrentGradientToken == GradientAnimationToken and Island.Parent then
+                        task.delay(0.1, PlayCycle)
+                    end
+                end)
+
+                GlassTween:Play()
+                OutlineTween:Play()
+                ShineTween:Play()
+            end
+
+            PlayCycle()
+        end
+
+        Library:OnUnload(StopDynamicIslandGradientAnimation)
+        PlayDynamicIslandGradientAnimation()
+
+        function Controller:Destroy()
+            StopDynamicIslandGradientAnimation()
+            IdleToken += 1
+            PressToken += 1
+            ActionMenuToken += 1
+            ContentVisibilityToken += 1
+            ActionMenuOpen = false
+            IsPressing = false
+
+            pcall(function()
+                PanelGrabBar:Destroy()
+            end)
+            pcall(function()
+                Island:Destroy()
+            end)
+
+            if DynamicIslandController == Controller then
+                DynamicIslandController = nil
+            end
+        end
+
+        function Controller:Wake()
+            IdleToken += 1
+            if IsIdle then
+                SetIslandIdleState(false)
+            end
+        end
+
+        function Controller:ScheduleIdle()
+            if not IdleEnabled then
+                return
+            end
+
+            IdleToken += 1
+            local CurrentToken = IdleToken
+            task.delay(IdleDelay, function()
+                if CurrentToken ~= IdleToken or IsPressing or ActionMenuOpen or not Island.Visible then
+                    return
+                end
+
+                SetIslandIdleState(true)
+            end)
+        end
+
+        function Controller:SetLocked(Locked)
+            local Text = Locked and (WindowInfo.DynamicIslandLockedText or "Locked")
+                or (WindowInfo.DynamicIslandUnlockedText or "Unlocked")
+            StatusLabel.Text = Text
+            StatusLabel.TextTransparency = 0.2
+            SetLockVisual(Locked)
+            StatusDot.ImageTransparency = 0.04
+            RefreshActionButtons()
+            Controller:Wake()
+            Controller:ScheduleIdle()
+        end
+
+        function Controller:SetAsset(Asset)
+            local Icon = ResolveDynamicIslandAsset(Asset)
+            if not Icon then
+                AssetImage.Image = ""
+                return
+            end
+
+            AssetImage.Image = Icon.Url or ""
+            AssetImage.ImageRectOffset = Icon.ImageRectOffset or Vector2.zero
+            AssetImage.ImageRectSize = Icon.ImageRectSize or Vector2.zero
+            AssetImage.ImageColor3 = Icon.Custom and Library.Scheme.WhiteColor or Library.Scheme.AccentColor
+        end
+
+        function Controller:SetText(Text, Subtitle)
+            if Text ~= nil then
+                TitleLabel.Text = tostring(Text)
+            end
+            if Subtitle ~= nil then
+                StatusLabel.Text = tostring(Subtitle)
+            end
+        end
+
+        function Controller:SetVisible(Visible)
+            Island.Visible = Visible == true
+            if not Island.Visible then
+                PanelGrabBar.Visible = false
+            end
+            if not Island.Visible and ActionMenuOpen and SetActionMenuOpen then
+                SetActionMenuOpen(false, true)
+            end
+        end
+
+        function Controller:SetActive(Active)
+            Controller:Wake()
+
+            local StatusText = Library.CantDragForced and (WindowInfo.DynamicIslandLockedText or "Locked")
+                or (
+                    Active and (WindowInfo.DynamicIslandOpenText or "Menu open")
+                    or (WindowInfo.DynamicIslandClosedText or WindowInfo.DynamicIslandSubtitle or "Menu closed")
+                )
+            StatusLabel.Text = StatusText
+            SetLockVisual(Library.CantDragForced)
+            StatusDot.ImageTransparency = Library.CantDragForced and 0.04 or (Active and 0.1 or 0.18)
+            RefreshActionButtons()
+            IslandGradient.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Active and Library.Scheme.WhiteColor or Library.Scheme.AccentColor),
+                ColorSequenceKeypoint.new(0.48, Library:GetBetterColor(Library.Scheme.MainColor, Active and 24 or 12)),
+                ColorSequenceKeypoint.new(1, Library.Scheme.AccentColor),
+            })
+            if ActionMenuOpen and SetActionMenuOpen then
+                SetActionMenuOpen(false)
+                Controller:ScheduleIdle()
+                return
+            end
+            SetIslandIdleState(false)
+            Controller:ScheduleIdle()
+        end
+
+        local function IsIslandPressInput(Input: InputObject, State: Enum.UserInputState)
+            return IsMouseInput(Input) and Input.UserInputState == State
+        end
+
+        local PressStartPosition: Vector2?
+        local LastDragDelta = Vector2.zero
+        local DraggingIsland = false
+        local DragActionConsumed = false
+        local DragHintActive = false
+        local ClosingPanelFromBar = false
+        local PanelBarStartPosition: Vector2?
+
+        local function InputPosition2D(Input: InputObject): Vector2
+            return Vector2.new(Input.Position.X, Input.Position.Y)
+        end
+
+        local function ResetIslandDragState()
+            IsPressing = false
+            PressStartPosition = nil
+            LastDragDelta = Vector2.zero
+            DraggingIsland = false
+            DragActionConsumed = false
+            if DragHintActive then
+                DragHintActive = false
+                SetDragHintVisible(false)
+            end
+        end
+
+        local function ResetPanelBarDragState()
+            ClosingPanelFromBar = false
+            PanelBarStartPosition = nil
+            TweenService:Create(PanelGrabBar, TweenInfo.new(0.14, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                BackgroundTransparency = ActionMenuOpen and 0.16 or 1,
+                Position = PanelGrabBarPosition,
+                Size = UDim2.fromOffset(68, 5),
+            }):Play()
+        end
+
+        Island.MouseEnter:Connect(function()
+            Controller:Wake()
+            TweenService:Create(Island, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = math.max(0, BaseTransparency - 0.02),
+            }):Play()
+            TweenService:Create(GlassLayer, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = math.max(0, GlassTransparency - 0.04),
+            }):Play()
+            if LiquidHoverLayer then
+                TweenService:Create(LiquidHoverLayer, TweenInfo.new(0.18, Enum.EasingStyle.Sine), {
+                    BackgroundTransparency = 0.84,
+                }):Play()
+            end
+        end)
+        Island.MouseLeave:Connect(function()
+            if ActionMenuOpen then
+                return
+            end
+
+            Controller:ScheduleIdle()
+            TweenService:Create(Island, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = IsIdle and IdleTransparency or BaseTransparency,
+            }):Play()
+            TweenService
+                :Create(GlassLayer, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    BackgroundTransparency = math.clamp(GlassTransparency + (IsIdle and 0.05 or 0), 0, 1),
+                })
+                :Play()
+            if LiquidHoverLayer then
+                TweenService:Create(LiquidHoverLayer, TweenInfo.new(0.18, Enum.EasingStyle.Sine), {
+                    BackgroundTransparency = 1,
+                }):Play()
+            end
+        end)
+        Island.MouseMoved:Connect(function(X: number, Y: number)
+            if not LiquidHoverGradient or not Island.AbsoluteSize then
+                return
+            end
+
+            local Size = Island.AbsoluteSize
+            if Size.X <= 0 or Size.Y <= 0 then
+                return
+            end
+
+            local Offset = Vector2.new(
+                math.clamp(((X - Island.AbsolutePosition.X) / Size.X) - 0.5, -0.5, 0.5),
+                math.clamp(((Y - Island.AbsolutePosition.Y) / Size.Y) - 0.5, -0.5, 0.5)
+            )
+            LiquidHoverGradient.Offset = Offset
+            OutlineGradient.Rotation = 120 + (Offset.X * 70)
+        end)
+        Island.InputBegan:Connect(function(Input: InputObject)
+            if not IsIslandPressInput(Input, Enum.UserInputState.Begin) then
+                return
+            end
+
+            if ActionMenuOpen then
+                return
+            end
+
+            Controller:Wake()
+            IsPressing = true
+            PressStartPosition = InputPosition2D(Input)
+            LastDragDelta = Vector2.zero
+            DraggingIsland = false
+            DragActionConsumed = false
+            PressToken += 1
+        end)
+        PanelGrabBar.InputBegan:Connect(function(Input: InputObject)
+            if not ActionMenuOpen or not IsIslandPressInput(Input, Enum.UserInputState.Begin) then
+                return
+            end
+
+            ClosingPanelFromBar = true
+            PanelBarStartPosition = InputPosition2D(Input)
+            PressToken += 1
+            TweenService:Create(PanelGrabBar, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+                BackgroundTransparency = 0.04,
+                Size = UDim2.fromOffset(78, 6),
+            }):Play()
+        end)
+        Library:GiveSignal(UserInputService.InputChanged:Connect(function(Input: InputObject)
+            if ActionMenuOpen and ClosingPanelFromBar and PanelBarStartPosition and IsHoverInput(Input) then
+                local Delta = InputPosition2D(Input) - PanelBarStartPosition
+                if Delta.Y < -4 then
+                    local Pull = math.clamp(math.abs(Delta.Y) / PanelCloseThreshold, 0, 1)
+                    TweenService:Create(PanelGrabBar, TweenInfo.new(0.06, Enum.EasingStyle.Linear), {
+                        BackgroundTransparency = 0.04 + (0.32 * (1 - Pull)),
+                        Size = UDim2.fromOffset(78 + (10 * Pull), 6),
+                    }):Play()
+                end
+                return
+            end
+
+            if not IsPressing or not PressStartPosition or not IsHoverInput(Input) or ActionMenuOpen then
+                return
+            end
+
+            local Delta = InputPosition2D(Input) - PressStartPosition
+            LastDragDelta = Delta
+            if Delta.Magnitude < 7 then
+                return
+            end
+
+            DraggingIsland = true
+            local AbsX = math.abs(Delta.X)
+            local AbsY = math.abs(Delta.Y)
+            if Delta.Y >= DragOpenThreshold and AbsY > AbsX * 0.72 then
+                DragActionConsumed = true
+                ResetIslandDragState()
+                if ActionMenuEnabled and SetActionMenuOpen then
+                    SetActionMenuOpen(true)
+                end
+                return
+            end
+
+            if AbsX > 18 and AbsX > AbsY then
+                DragHintActive = true
+                SetDragHintVisible(true, Delta.X)
+            end
+        end))
+        Library:GiveSignal(UserInputService.InputEnded:Connect(function(Input: InputObject)
+            if not IsMouseInput(Input) then
+                return
+            end
+
+            if ClosingPanelFromBar then
+                local DeltaY = 0
+                if PanelBarStartPosition then
+                    DeltaY = InputPosition2D(Input).Y - PanelBarStartPosition.Y
+                end
+                ResetPanelBarDragState()
+                if ActionMenuOpen and DeltaY <= -PanelCloseThreshold and SetActionMenuOpen then
+                    SetActionMenuOpen(false)
+                    Controller:ScheduleIdle()
+                end
+                return
+            end
+
+            if not IsPressing then
+                return
+            end
+
+            local Delta = LastDragDelta
+            local WasDragging = DraggingIsland
+            local WasConsumed = DragActionConsumed
+            ResetIslandDragState()
+            PressToken += 1
+
+            if WasConsumed then
+                return
+            end
+
+            if WasDragging then
+                if math.abs(Delta.X) >= DragLockThreshold and math.abs(Delta.X) > math.abs(Delta.Y) then
+                    Library.CantDragForced = Delta.X > 0
+                    Controller:SetLocked(Library.CantDragForced)
+                else
+                    Controller:ScheduleIdle()
+                end
+                return
+            end
+
+            Library:Toggle()
+        end))
+
+        if WindowInfo.DynamicIslandDraggable == true then
+            Library:MakeDraggable(Island, Island, true, true)
+        end
+        Controller:SetAsset(WindowInfo.DynamicIslandAsset)
+        Controller:SetActive(Library.Toggled)
+        Controller:ScheduleIdle()
+
+        DynamicIslandController = Controller
+        return Controller
+    end
+
+    do
+        FullscreenBackground.Visible = WindowInfo.FullscreenBackground == true
+        FullscreenBackground.BackgroundColor3 = WindowInfo.FullscreenBackgroundColor
+        FullscreenBackground.BackgroundTransparency = WindowInfo.FullscreenBackgroundTransparency
+        WindowInfo.FullscreenBackgroundImage =
+            ResolveWindowImage(WindowInfo.FullscreenBackgroundImage, "WindowFullscreenBackground")
+        WindowInfo.FullscreenBackgroundVideo =
+            ResolveWindowVideo(WindowInfo.FullscreenBackgroundVideo, "WindowFullscreenBackgroundVideo")
+        FullscreenBackground.Image = WindowInfo.FullscreenBackgroundImage or ""
+        FullscreenBackground.ImageTransparency = WindowInfo.FullscreenBackgroundImageTransparency
+        FullscreenBackground.ScaleType = WindowInfo.FullscreenBackgroundImageScaleType
+        FullscreenBackgroundVideo.Video = WindowInfo.FullscreenBackgroundVideo or ""
+        FullscreenBackgroundVideo.Visible = WindowInfo.FullscreenBackground == true
+            and WindowInfo.FullscreenBackgroundVideo ~= nil
+            and WindowInfo.FullscreenBackgroundVideo ~= ""
+        ApplyVideoFrameSettings(FullscreenBackgroundVideo, {
+            ScaleType = WindowInfo.FullscreenBackgroundVideoScaleType,
+            Transparency = WindowInfo.FullscreenBackgroundVideoTransparency,
+            Looped = WindowInfo.FullscreenBackgroundVideoLooped,
+            Playing = WindowInfo.FullscreenBackgroundVideoPlaying,
+            Volume = WindowInfo.FullscreenBackgroundVideoVolume,
+        })
+        if WindowInfo.FullscreenBackgroundVideo and WindowInfo.FullscreenBackgroundVideo ~= "" then
+            FullscreenBackground.Visible = false
+            FullscreenBackground.BackgroundTransparency = math.max(0.95, WindowInfo.FullscreenBackgroundTransparency)
+        elseif WindowInfo.FullscreenBackgroundImage and WindowInfo.FullscreenBackgroundImage ~= "" then
+            FullscreenBackground.BackgroundTransparency = math.max(0.95, WindowInfo.FullscreenBackgroundTransparency)
+        end
+
+        Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Keybinds", {
+            Width = WindowInfo.KeybindMenuWidth,
+            Height = WindowInfo.KeybindMenuHeight,
+            MaxHeight = WindowInfo.KeybindMenuMaxHeight,
+            Size = WindowInfo.KeybindMenuSize,
+        })
+        Library.KeybindMenuWidth = WindowInfo.KeybindMenuWidth
+        Library.KeybindMenuHeight = WindowInfo.KeybindMenuHeight
+        Library.KeybindMenuMaxHeight = WindowInfo.KeybindMenuMaxHeight
+        Library.KeybindFrame.AnchorPoint = Vector2.new(0, 0.5)
+        Library.KeybindFrame.Position = WindowInfo.KeybindMenuPosition or UDim2.new(0, 6, 0.5, 0)
+        Library.KeybindFrame.Visible = false
+
+        MainFrame = New("TextButton", {
+            BackgroundColor3 = function()
+                return Library:GetBetterColor(Library.Scheme.BackgroundColor, -1)
+            end,
+            Name = "Main",
+            Text = "",
+            Position = WindowInfo.Position,
+            Size = WindowInfo.Size,
+            Visible = false,
+            Parent = ScreenGui,
+        })
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                Parent = MainFrame,
+            })
+        )
+        table.insert(
+            Library.Scales,
+            New("UIScale", {
+                Parent = MainFrame,
+            })
+        )
+        MainOutlineStroke, MainShadowStroke = Library:AddOutline(MainFrame, {
+            Color = WindowInfo.BorderColor,
+            Thickness = WindowInfo.BorderThickness,
+            Transparency = WindowInfo.BorderTransparency,
+            ShadowColor = WindowInfo.ShadowColor,
+            ShadowThickness = WindowInfo.ShadowThickness,
+            ShadowTransparency = WindowInfo.ShadowTransparency,
+        })
+        if WindowInfo.WindowShadow ~= false then
+            MainDropShadow = Library:AddShadowGlow(MainFrame, {
+                Name = "WindowShadow",
+                Color = WindowInfo.WindowShadowColor or WindowInfo.ShadowColor or "DarkColor",
+                Transparency = WindowInfo.WindowShadowTransparency or 0.58,
+                Size = WindowInfo.WindowShadowSize or 28,
+                Offset = WindowInfo.WindowShadowOffset or Vector2.new(0, 8),
+                Image = WindowInfo.WindowShadowImage,
+                ScaleWithDPI = true,
+                ZIndex = math.max(0, MainFrame.ZIndex - 1),
+            })
+        end
+        if WindowInfo.WindowGlow == true then
+            MainWindowGlow = Library:AddShadowGlow(MainFrame, {
+                Name = "WindowGlow",
+                Color = WindowInfo.WindowGlowColor or "WhiteColor",
+                Transparency = WindowInfo.WindowGlowTransparency or 0.88,
+                Size = WindowInfo.WindowGlowSize or 18,
+                Offset = WindowInfo.WindowGlowOffset or Vector2.zero,
+                Image = WindowInfo.WindowGlowImage,
+                ScaleWithDPI = true,
+                ZIndex = math.max(0, MainFrame.ZIndex - 1),
+            })
+        end
+        if WindowInfo.Gradient then
+            WindowGradient = Library:AddGradient(MainFrame, {
+                Color = WindowInfo.GradientColorSequence,
+                Rotation = WindowInfo.GradientRotation,
+                Transparency = WindowInfo.GradientTransparency,
+            })
+        end
+        Library:MakeLine(MainFrame, {
+            Position = UDim2.fromOffset(0, 48),
+            Size = UDim2.new(1, 0, 0, 1),
+        })
+
+        DividerLine = New("Frame", {
+            BackgroundColor3 = "OutlineColor",
+            Position = IsTopbarTabs and UDim2.fromOffset(0, 88) or UDim2.fromOffset(InitialLeftWidth, 0),
+            Size = IsTopbarTabs and UDim2.new(1, 0, 0, 1) or UDim2.new(0, 1, 1, -21),
+            Parent = MainFrame,
+        })
+
+        local function CreateBackgroundImage(Image)
+            if BackgroundImage then
+                BackgroundImage.Image = Image
+                BackgroundImage.Visible = Image ~= nil
+                    and Image ~= ""
+                    and not (WindowInfo.BackgroundVideo ~= nil and WindowInfo.BackgroundVideo ~= "")
+                return BackgroundImage
+            end
+
+            BackgroundImage = New("ImageLabel", {
+                Image = Image or "",
+                Position = UDim2.fromScale(0, 0),
+                Size = UDim2.fromScale(1, 1),
+                ScaleType = WindowInfo.BackgroundImageScaleType,
+                ZIndex = 1,
+                BackgroundTransparency = 1,
+                ImageTransparency = WindowInfo.BackgroundImageTransparency,
+                Visible = Image ~= nil
+                    and Image ~= ""
+                    and not (WindowInfo.BackgroundVideo ~= nil and WindowInfo.BackgroundVideo ~= ""),
+                Parent = MainFrame,
+            })
+
+            table.insert(
+                Library.Corners,
+                New("UICorner", {
+                    CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                    Parent = BackgroundImage,
+                })
+            )
+
+            return BackgroundImage
+        end
+
+        local function CreateBackgroundVideo(Video)
+            local Visible = Video ~= nil and Video ~= ""
+            if BackgroundVideo then
+                BackgroundVideo.Video = Video or ""
+                BackgroundVideo.Visible = Visible
+                ApplyVideoFrameSettings(BackgroundVideo, {
+                    ScaleType = WindowInfo.BackgroundVideoScaleType,
+                    Transparency = WindowInfo.BackgroundVideoTransparency,
+                    Looped = WindowInfo.BackgroundVideoLooped,
+                    Playing = WindowInfo.BackgroundVideoPlaying,
+                    Volume = WindowInfo.BackgroundVideoVolume,
+                })
+
+                if BackgroundImage then
+                    BackgroundImage.Visible = WindowInfo.BackgroundImage ~= nil
+                        and WindowInfo.BackgroundImage ~= ""
+                        and not Visible
+                end
+
+                return BackgroundVideo
+            end
+
+            BackgroundVideo = New("VideoFrame", {
+                BackgroundTransparency = 1,
+                Looped = WindowInfo.BackgroundVideoLooped,
+                Position = UDim2.fromScale(0, 0),
+                Size = UDim2.fromScale(1, 1),
+                Video = Video or "",
+                Visible = Visible,
+                Volume = WindowInfo.BackgroundVideoVolume,
+                ZIndex = 1,
+                Parent = MainFrame,
+            })
+            ApplyVideoFrameSettings(BackgroundVideo, {
+                ScaleType = WindowInfo.BackgroundVideoScaleType,
+                Transparency = WindowInfo.BackgroundVideoTransparency,
+                Looped = WindowInfo.BackgroundVideoLooped,
+                Playing = WindowInfo.BackgroundVideoPlaying,
+                Volume = WindowInfo.BackgroundVideoVolume,
+            })
+
+            table.insert(
+                Library.Corners,
+                New("UICorner", {
+                    CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                    Parent = BackgroundVideo,
+                })
+            )
+
+            return BackgroundVideo
+        end
+
+        local function HasBackgroundMedia()
+            return (WindowInfo.BackgroundImage ~= nil and WindowInfo.BackgroundImage ~= "")
+                or (WindowInfo.BackgroundVideo ~= nil and WindowInfo.BackgroundVideo ~= "")
+        end
+
+        local function RefreshBackgroundMedia()
+            local HasVideo = WindowInfo.BackgroundVideo ~= nil and WindowInfo.BackgroundVideo ~= ""
+            local HasImage = WindowInfo.BackgroundImage ~= nil and WindowInfo.BackgroundImage ~= ""
+
+            if BackgroundVideo then
+                BackgroundVideo.Visible = HasVideo
+                BackgroundVideo.Playing = HasVideo and WindowInfo.BackgroundVideoPlaying == true
+            end
+
+            if BackgroundImage then
+                BackgroundImage.Visible = HasImage and not HasVideo
+            end
+
+            Library.HasBackgroundImage = HasBackgroundMedia()
+            UpdateBackgroundImageSurfaces()
+        end
+
+        WindowInfo.BackgroundImage = ResolveWindowImage(WindowInfo.BackgroundImage, "WindowBackground")
+        WindowInfo.BackgroundVideo = ResolveWindowVideo(WindowInfo.BackgroundVideo, "WindowBackgroundVideo")
+        Library.HasBackgroundImage = HasBackgroundMedia()
+        CreateBackgroundImage(WindowInfo.BackgroundImage)
+        CreateBackgroundVideo(WindowInfo.BackgroundVideo)
+
+        if WindowInfo.Center then
+            MainFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset / 2, 0.5, -MainFrame.Size.Y.Offset / 2)
+        end
+
+        --// Top Bar \\-
+        TopBar = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 48),
+            Parent = MainFrame,
+        })
+        Library:MakeDraggable(MainFrame, TopBar, false, true)
+
+        --// Title
+        TitleHolder = New("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, InitialLeftWidth, 1, 0),
+            Parent = TopBar,
+        })
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Center,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Padding = UDim.new(0, 6),
+            Parent = TitleHolder,
+        })
+
+        if WindowInfo.Icon then
+            local Icon = Library:GetCustomIcon(WindowInfo.Icon)
+            WindowIcon = New("ImageLabel", {
+                Image = Icon.Url,
+                ImageRectOffset = Icon.ImageRectOffset,
+                ImageRectSize = Icon.ImageRectSize,
+                Size = WindowInfo.IconSize,
+                Parent = TitleHolder,
+            })
+        else
+            WindowIcon = New("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = WindowInfo.IconSize,
+                Text = WindowInfo.Title:sub(1, 1),
+                TextScaled = true,
+                Visible = false,
+                Parent = TitleHolder,
+            })
+        end
+
+        local X = Library:GetTextBounds(
+            WindowInfo.Title,
+            Library.Scheme.Font,
+            20,
+            TitleHolder.AbsoluteSize.X - (WindowInfo.Icon and WindowInfo.IconSize.X.Offset + 6 or 0) - 12
+        )
+        WindowTitle = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, X, 1, 0),
+            Text = WindowInfo.Title,
+            TextSize = 20,
+            Parent = TitleHolder,
+        })
+
+        --// Top Right Bar
+        RightWrapper = New("Frame", {
+            AnchorPoint = Vector2.new(1, 0.5),
+            BackgroundTransparency = 1,
+            Position = UDim2.new(1, -49, 0.5, 0),
+            Size = UDim2.new(1, -InitialLeftWidth - 57 - 1, 1, -16),
+            Parent = TopBar,
+        })
+
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Horizontal,
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Padding = UDim.new(0, 8),
+            Parent = RightWrapper,
+        })
+
+        CurrentTabInfo = New("Frame", {
+            Size = UDim2.fromScale(WindowInfo.DisableSearch and 1 or 0.5, 1),
+            Visible = false,
+            BackgroundTransparency = 1,
+            Parent = RightWrapper,
+        })
+
+        New("UIFlexItem", {
+            FlexMode = Enum.UIFlexMode.Grow,
+            Parent = CurrentTabInfo,
+        })
+
+        New("UIListLayout", {
+            FillDirection = Enum.FillDirection.Vertical,
+            HorizontalAlignment = Enum.HorizontalAlignment.Left,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Parent = CurrentTabInfo,
+        })
+
+        New("UIPadding", {
+            PaddingBottom = UDim.new(0, 8),
+            PaddingLeft = UDim.new(0, 8),
+            PaddingRight = UDim.new(0, 8),
+            PaddingTop = UDim.new(0, 8),
+            Parent = CurrentTabInfo,
+        })
+
+        CurrentTabLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            Text = "",
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = CurrentTabInfo,
+        })
+
+        CurrentTabDescriptionFrame = New("ScrollingFrame", {
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            CanvasSize = UDim2.fromScale(0, 0),
+            ScrollBarThickness = 2,
+            ScrollingDirection = Enum.ScrollingDirection.Y,
+            Size = UDim2.new(1, 0, 1, -20),
+            Parent = CurrentTabInfo,
+        })
+        CurrentTabDescription = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 0),
+            AutomaticSize = Enum.AutomaticSize.Y,
+            Text = "",
+            TextWrapped = true,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTransparency = 0.5,
+            Parent = CurrentTabDescriptionFrame,
+        })
+
+        SearchBox = New("TextBox", {
+            BackgroundColor3 = "MainColor",
+            PlaceholderText = "Search",
+            Size = WindowInfo.SearchbarSize,
+            TextScaled = true,
+            Visible = not (WindowInfo.DisableSearch or false),
+            Parent = RightWrapper,
+        })
+        New("UIFlexItem", {
+            FlexMode = Enum.UIFlexMode.Shrink,
+            Parent = SearchBox,
+        })
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                Parent = SearchBox,
+            })
+        )
+        New("UIPadding", {
+            PaddingBottom = UDim.new(0, 8),
+            PaddingLeft = UDim.new(0, 8),
+            PaddingRight = UDim.new(0, 8),
+            PaddingTop = UDim.new(0, 8),
+            Parent = SearchBox,
+        })
+        New("UIStroke", {
+            Color = "OutlineColor",
+            Parent = SearchBox,
+        })
+
+        local SearchIcon = Library:GetIcon("search")
+        if SearchIcon then
+            New("ImageLabel", {
+                Image = SearchIcon.Url,
+                ImageColor3 = "FontColor",
+                ImageRectOffset = SearchIcon.ImageRectOffset,
+                ImageRectSize = SearchIcon.ImageRectSize,
+                ImageTransparency = 0.5,
+                Size = UDim2.fromScale(1, 1),
+                SizeConstraint = Enum.SizeConstraint.RelativeYY,
+                Parent = SearchBox,
+            })
+        end
+
+        if MoveIcon then
+            New("ImageLabel", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Image = MoveIcon.Url,
+                ImageColor3 = "OutlineColor",
+                ImageRectOffset = MoveIcon.ImageRectOffset,
+                ImageRectSize = MoveIcon.ImageRectSize,
+                Position = UDim2.new(1, -10, 0.5, 0),
+                Size = UDim2.fromOffset(28, 28),
+                SizeConstraint = Enum.SizeConstraint.RelativeYY,
+                Parent = TopBar,
+            })
+        end
+
+        --// Bottom Bar \\--
+        BottomBackground = New("Frame", {
+            AnchorPoint = Vector2.new(0, 1),
+            BackgroundColor3 = function()
+                return Library:GetBetterColor(Library.Scheme.BackgroundColor, 4)
+            end,
+            Position = UDim2.fromScale(0, 1),
+            Size = UDim2.new(1, 0, 0, 20 + WindowInfo.CornerRadius),
+            Parent = MainFrame,
+        })
+        RegisterBackgroundImageSurface(BottomBackground, 0, "Content")
+        Library:MakeLine(MainFrame, {
+            AnchorPoint = Vector2.new(0, 1),
+            Position = UDim2.new(0, 0, 1, -20),
+            Size = UDim2.new(1, 0, 0, 1),
+        })
+
+        local BottomBar = New("Frame", {
+            AnchorPoint = Vector2.new(0, 1),
+            BackgroundTransparency = 1,
+            Position = UDim2.fromScale(0, 1),
+            Size = UDim2.new(1, 0, 0, 20),
+            Parent = MainFrame,
+        })
+        table.insert(
+            Library.Corners,
+            New("UICorner", {
+                CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
+                Parent = BottomBackground,
+            })
+        )
+
+        --// Footer
+        FooterLabel = New("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromScale(1, 1),
+            Text = WindowInfo.Footer,
+            TextSize = 14,
+            TextTransparency = 0.5,
+            Parent = BottomBar,
+        })
+
+        --// Resize Button
+        if WindowInfo.Resizable then
+            ResizeButton = New("TextButton", {
+                AnchorPoint = Vector2.new(1, 0),
+                BackgroundTransparency = 1,
+                Position = UDim2.new(1, -WindowInfo.CornerRadius / 4, 0, 0),
+                Size = UDim2.fromScale(1, 1),
+                SizeConstraint = Enum.SizeConstraint.RelativeYY,
+                Text = "",
+                Parent = BottomBar,
+            })
+
+            Library:MakeResizable(MainFrame, ResizeButton, function()
+                for _, Tab in Library.Tabs do
+                    Tab:Resize(true)
+                end
+            end)
+        end
+
+        New("ImageLabel", {
+            Image = ResizeIcon and ResizeIcon.Url or "",
+            ImageColor3 = "FontColor",
+            ImageRectOffset = ResizeIcon and ResizeIcon.ImageRectOffset or Vector2.zero,
+            ImageRectSize = ResizeIcon and ResizeIcon.ImageRectSize or Vector2.zero,
+            ImageTransparency = 0.5,
+            Position = UDim2.fromOffset(2, 2),
+            Size = UDim2.new(1, -4, 1, -4),
+            Parent = ResizeButton,
+        })
+
+        --// Tabs \\--
+        Tabs = New("ScrollingFrame", {
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            BackgroundColor3 = "BackgroundColor",
+            CanvasSize = UDim2.fromScale(0, 0),
+            Position = IsTopbarTabs and UDim2.fromOffset(0, 49) or UDim2.fromOffset(0, 49),
+            ScrollBarThickness = 0,
+            Size = IsTopbarTabs and UDim2.new(1, 0, 0, 39) or UDim2.new(0, InitialLeftWidth, 1, -70),
+            Parent = MainFrame,
+        })
+        RegisterBackgroundImageSurface(Tabs, 0, "Content")
+        New("UIListLayout", {
+            FillDirection = IsTopbarTabs and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical,
+            Parent = Tabs,
+        })
+
+        --// Container \\--
+        Container = New("Frame", {
+            AnchorPoint = Vector2.new(1, 0),
+            BackgroundColor3 = function()
+                return Library:GetBetterColor(Library.Scheme.BackgroundColor, 1)
+            end,
+            Name = "Container",
+            Position = IsTopbarTabs and UDim2.new(1, 0, 0, 89) or UDim2.new(1, 0, 0, 49),
+            Size = IsTopbarTabs and UDim2.new(1, 0, 1, -110) or UDim2.new(1, -InitialLeftWidth - 1, 1, -70),
+            Parent = MainFrame,
+        })
+        RegisterBackgroundImageSurface(Container, 0, "Content")
+        New("UIPadding", {
+            PaddingBottom = UDim.new(0, 0),
+            PaddingLeft = UDim.new(0, 6),
+            PaddingRight = UDim.new(0, 6),
+            PaddingTop = UDim.new(0, 0),
+            Parent = Container,
+        })
+    end
+
+    --// Window Table \\--
+    local Window = {
+        Holder = MainFrame,
+        MainFrame = MainFrame,
+        ScreenGui = ScreenGui,
+    }
+
+    function Window:ChangeTitle(title)
+        assert(typeof(title) == "string", "Expected string for title got: " .. typeof(title))
+
+        WindowTitle.Text = title
+        WindowInfo.Title = title
+    end
+
+    function Window:SetBackgroundImage(Image: string)
+        assert(typeof(Image) == "string", "Expected string for Image got: " .. typeof(Image))
+
+        Image = ResolveWindowImage(Image, "WindowBackground")
+        BackgroundImage.Image = Image
+        BackgroundImage.Visible = Image ~= ""
+            and not (WindowInfo.BackgroundVideo ~= nil and WindowInfo.BackgroundVideo ~= "")
+        WindowInfo.BackgroundImage = Image
+        Library.HasBackgroundImage = (WindowInfo.BackgroundImage ~= nil and WindowInfo.BackgroundImage ~= "")
+            or (WindowInfo.BackgroundVideo ~= nil and WindowInfo.BackgroundVideo ~= "")
+        UpdateBackgroundImageSurfaces()
+    end
+
+    Window.ChangeBackgroundImage = Window.SetBackgroundImage
+
+    function Window:SetFullscreenBackgroundImage(Image: string?)
+        assert(Image == nil or typeof(Image) == "string", "Expected string or nil for Image got: " .. typeof(Image))
+
+        Image = ResolveWindowImage(Image, "WindowFullscreenBackground")
+        FullscreenBackground.Image = Image or ""
+        FullscreenBackground.Visible = WindowInfo.FullscreenBackground == true
+            and Image ~= nil
+            and Image ~= ""
+            and not (WindowInfo.FullscreenBackgroundVideo ~= nil and WindowInfo.FullscreenBackgroundVideo ~= "")
+        WindowInfo.FullscreenBackgroundImage = Image
+        if WindowInfo.FullscreenBackgroundVideo and WindowInfo.FullscreenBackgroundVideo ~= "" then
+            FullscreenBackground.BackgroundTransparency = math.max(0.95, WindowInfo.FullscreenBackgroundTransparency)
+        elseif Image and Image ~= "" then
+            FullscreenBackground.BackgroundTransparency = math.max(0.95, WindowInfo.FullscreenBackgroundTransparency)
+        else
+            FullscreenBackground.BackgroundTransparency = WindowInfo.FullscreenBackgroundTransparency
+        end
+    end
+
+    function Window:SetBackgroundVideo(Video: string | number?)
+        assert(
+            Video == nil or typeof(Video) == "string" or typeof(Video) == "number",
+            "Expected string, number, or nil for Video got: " .. typeof(Video)
+        )
+
+        local ResolvedVideo = ResolveWindowVideo(Video, "WindowBackgroundVideo")
+        WindowInfo.BackgroundVideo = ResolvedVideo
+
+        if BackgroundVideo then
+            BackgroundVideo.Video = ResolvedVideo or ""
+            BackgroundVideo.Visible = ResolvedVideo ~= nil and ResolvedVideo ~= ""
+            ApplyVideoFrameSettings(BackgroundVideo, {
+                ScaleType = WindowInfo.BackgroundVideoScaleType,
+                Transparency = WindowInfo.BackgroundVideoTransparency,
+                Looped = WindowInfo.BackgroundVideoLooped,
+                Playing = WindowInfo.BackgroundVideoPlaying,
+                Volume = WindowInfo.BackgroundVideoVolume,
+            })
+        end
+
+        if BackgroundImage then
+            BackgroundImage.Visible = WindowInfo.BackgroundImage ~= nil
+                and WindowInfo.BackgroundImage ~= ""
+                and not (ResolvedVideo ~= nil and ResolvedVideo ~= "")
+        end
+
+        Library.HasBackgroundImage = (WindowInfo.BackgroundImage ~= nil and WindowInfo.BackgroundImage ~= "")
+            or (WindowInfo.BackgroundVideo ~= nil and WindowInfo.BackgroundVideo ~= "")
+        UpdateBackgroundImageSurfaces()
+    end
+
+    Window.ChangeBackgroundVideo = Window.SetBackgroundVideo
+
+    function Window:SetFullscreenBackgroundVideo(Video: string | number?)
+        assert(
+            Video == nil or typeof(Video) == "string" or typeof(Video) == "number",
+            "Expected string, number, or nil for Video got: " .. typeof(Video)
+        )
+
+        local ResolvedVideo = ResolveWindowVideo(Video, "WindowFullscreenBackgroundVideo")
+        WindowInfo.FullscreenBackgroundVideo = ResolvedVideo
+        FullscreenBackgroundVideo.Video = ResolvedVideo or ""
+        FullscreenBackgroundVideo.Visible = WindowInfo.FullscreenBackground == true
+            and ResolvedVideo ~= nil
+            and ResolvedVideo ~= ""
+        ApplyVideoFrameSettings(FullscreenBackgroundVideo, {
+            ScaleType = WindowInfo.FullscreenBackgroundVideoScaleType,
+            Transparency = WindowInfo.FullscreenBackgroundVideoTransparency,
+            Looped = WindowInfo.FullscreenBackgroundVideoLooped,
+            Playing = WindowInfo.FullscreenBackgroundVideoPlaying,
+            Volume = WindowInfo.FullscreenBackgroundVideoVolume,
+        })
+
+        if ResolvedVideo and ResolvedVideo ~= "" then
+            FullscreenBackground.Visible = false
+            FullscreenBackground.BackgroundTransparency = math.max(0.95, WindowInfo.FullscreenBackgroundTransparency)
+        else
+            FullscreenBackground.Visible = WindowInfo.FullscreenBackground == true
+                and WindowInfo.FullscreenBackgroundImage ~= nil
+                and WindowInfo.FullscreenBackgroundImage ~= ""
+            if WindowInfo.FullscreenBackgroundImage and WindowInfo.FullscreenBackgroundImage ~= "" then
+                FullscreenBackground.BackgroundTransparency =
+                    math.max(0.95, WindowInfo.FullscreenBackgroundTransparency)
+            else
+                FullscreenBackground.BackgroundTransparency = WindowInfo.FullscreenBackgroundTransparency
+            end
+        end
+    end
+
+    function Window:SetBackgroundVideoTransparency(Transparency: number)
+        assert(typeof(Transparency) == "number", "Expected number for Transparency got: " .. typeof(Transparency))
+
+        WindowInfo.BackgroundVideoTransparency = math.clamp(Transparency, 0, 1)
+        if BackgroundVideo then
+            ApplyVideoFrameSettings(BackgroundVideo, {
+                ScaleType = WindowInfo.BackgroundVideoScaleType,
+                Transparency = WindowInfo.BackgroundVideoTransparency,
+                Looped = WindowInfo.BackgroundVideoLooped,
+                Playing = WindowInfo.BackgroundVideoPlaying,
+                Volume = WindowInfo.BackgroundVideoVolume,
+            })
+        end
+    end
+
+    function Window:SetFullscreenBackgroundVideoTransparency(Transparency: number)
+        assert(typeof(Transparency) == "number", "Expected number for Transparency got: " .. typeof(Transparency))
+
+        WindowInfo.FullscreenBackgroundVideoTransparency = math.clamp(Transparency, 0, 1)
+        ApplyVideoFrameSettings(FullscreenBackgroundVideo, {
+            ScaleType = WindowInfo.FullscreenBackgroundVideoScaleType,
+            Transparency = WindowInfo.FullscreenBackgroundVideoTransparency,
+            Looped = WindowInfo.FullscreenBackgroundVideoLooped,
+            Playing = WindowInfo.FullscreenBackgroundVideoPlaying,
+            Volume = WindowInfo.FullscreenBackgroundVideoVolume,
+        })
+    end
+
+    function Window:SetBackgroundVideoPlaying(Playing: boolean)
+        assert(typeof(Playing) == "boolean", "Expected boolean for Playing got: " .. typeof(Playing))
+
+        WindowInfo.BackgroundVideoPlaying = Playing
+        if BackgroundVideo then
+            BackgroundVideo.Playing = Playing and BackgroundVideo.Visible
+        end
+    end
+
+    function Window:SetFullscreenBackgroundVideoPlaying(Playing: boolean)
+        assert(typeof(Playing) == "boolean", "Expected boolean for Playing got: " .. typeof(Playing))
+
+        WindowInfo.FullscreenBackgroundVideoPlaying = Playing
+        FullscreenBackgroundVideo.Playing = Playing and FullscreenBackgroundVideo.Visible
+    end
+
+    function Window:SetBackgroundVideoLooped(Looped: boolean)
+        assert(typeof(Looped) == "boolean", "Expected boolean for Looped got: " .. typeof(Looped))
+
+        WindowInfo.BackgroundVideoLooped = Looped
+        if BackgroundVideo then
+            BackgroundVideo.Looped = Looped
+        end
+    end
+
+    function Window:SetFullscreenBackgroundVideoLooped(Looped: boolean)
+        assert(typeof(Looped) == "boolean", "Expected boolean for Looped got: " .. typeof(Looped))
+
+        WindowInfo.FullscreenBackgroundVideoLooped = Looped
+        FullscreenBackgroundVideo.Looped = Looped
+    end
+
+    function Window:SetBackgroundVideoVolume(Volume: number)
+        assert(typeof(Volume) == "number", "Expected number for Volume got: " .. typeof(Volume))
+
+        WindowInfo.BackgroundVideoVolume = math.clamp(Volume, 0, 10)
+        if BackgroundVideo then
+            BackgroundVideo.Volume = WindowInfo.BackgroundVideoVolume
+        end
+    end
+
+    function Window:SetFullscreenBackgroundVideoVolume(Volume: number)
+        assert(typeof(Volume) == "number", "Expected number for Volume got: " .. typeof(Volume))
+
+        WindowInfo.FullscreenBackgroundVideoVolume = math.clamp(Volume, 0, 10)
+        FullscreenBackgroundVideo.Volume = WindowInfo.FullscreenBackgroundVideoVolume
+    end
+
+    function Window:SetBackgroundImageTransparency(Transparency: number)
+        assert(typeof(Transparency) == "number", "Expected number for Transparency got: " .. typeof(Transparency))
+
+        WindowInfo.BackgroundImageTransparency = math.clamp(Transparency, 0, 1)
+        BackgroundImage.ImageTransparency = WindowInfo.BackgroundImageTransparency
+    end
+
+    function Window:SetBackgroundImageSurfaceTransparency(ContentTransparency: number?, PanelTransparency: number?)
+        if ContentTransparency ~= nil then
+            assert(
+                typeof(ContentTransparency) == "number",
+                "Expected number for ContentTransparency got: " .. typeof(ContentTransparency)
+            )
+            WindowInfo.BackgroundImageContentTransparency = math.clamp(ContentTransparency, 0, 1)
+            Library.BackgroundImageContentTransparency = WindowInfo.BackgroundImageContentTransparency
+        end
+
+        if PanelTransparency ~= nil then
+            assert(
+                typeof(PanelTransparency) == "number",
+                "Expected number for PanelTransparency got: " .. typeof(PanelTransparency)
+            )
+            WindowInfo.BackgroundImagePanelTransparency = math.clamp(PanelTransparency, 0, 1)
+            Library.BackgroundImagePanelTransparency = WindowInfo.BackgroundImagePanelTransparency
+        elseif ContentTransparency ~= nil then
+            WindowInfo.BackgroundImagePanelTransparency = math.clamp(ContentTransparency, 0, 1)
+            Library.BackgroundImagePanelTransparency = WindowInfo.BackgroundImagePanelTransparency
+        end
+
+        UpdateBackgroundImageSurfaces()
+    end
+
+    Window.SetBackgroundImageLayerTransparency = Window.SetBackgroundImageSurfaceTransparency
+
+    function Window:SetGradient(Enabled: boolean, GradientInfo)
+        WindowInfo.Gradient = Enabled == true
+        if GradientInfo then
+            WindowInfo.GradientColorSequence = GradientInfo.Color
+                or GradientInfo.ColorSequence
+                or WindowInfo.GradientColorSequence
+            WindowInfo.GradientRotation = GradientInfo.Rotation or WindowInfo.GradientRotation
+            WindowInfo.GradientTransparency = GradientInfo.Transparency or WindowInfo.GradientTransparency
+        end
+
+        if not WindowGradient and WindowInfo.Gradient then
+            WindowGradient = Library:AddGradient(MainFrame, {
+                Color = WindowInfo.GradientColorSequence,
+                Rotation = WindowInfo.GradientRotation,
+                Transparency = WindowInfo.GradientTransparency,
+            })
+        elseif WindowGradient then
+            WindowGradient.Enabled = WindowInfo.Gradient
+        end
+
+        if WindowGradient and GradientInfo then
+            WindowGradient.Color = WindowInfo.GradientColorSequence
+            WindowGradient.Rotation = WindowInfo.GradientRotation
+            WindowGradient.Transparency = WindowInfo.GradientTransparency
+        end
+    end
+
+    function Window:SetDynamicIslandVisible(Visible: boolean)
+        assert(typeof(Visible) == "boolean", "Expected boolean for Visible got: " .. typeof(Visible))
+
+        WindowInfo.DynamicIsland = Visible
+        if Visible and not DynamicIslandController then
+            DynamicIslandController = CreateDynamicIslandToggle()
+        end
+        if DynamicIslandController then
+            DynamicIslandController:SetVisible(Visible)
+            if Visible then
+                DynamicIslandController:ScheduleIdle()
+            end
+        end
+    end
+
+    function Window:SetDynamicIslandAsset(Asset)
+        WindowInfo.DynamicIslandAsset = Asset
+        if not DynamicIslandController then
+            DynamicIslandController = CreateDynamicIslandToggle()
+        end
+        if DynamicIslandController then
+            DynamicIslandController:SetAsset(Asset)
+        end
+    end
+
+    function Window:SetDynamicIslandText(Text: string?, Subtitle: string?)
+        assert(Text == nil or typeof(Text) == "string", "Expected string or nil for Text got: " .. typeof(Text))
+        assert(
+            Subtitle == nil or typeof(Subtitle) == "string",
+            "Expected string or nil for Subtitle got: " .. typeof(Subtitle)
+        )
+
+        WindowInfo.DynamicIslandText = Text or WindowInfo.DynamicIslandText
+        WindowInfo.DynamicIslandSubtitle = Subtitle or WindowInfo.DynamicIslandSubtitle
+        if not DynamicIslandController then
+            DynamicIslandController = CreateDynamicIslandToggle()
+        end
+        if DynamicIslandController then
+            DynamicIslandController:SetText(Text, Subtitle)
+        end
+    end
+
+    function Window:SetBorder(Info)
+        Info = Info or {}
+
+        if Info.Color then
+
+
+    if UseDynamicIslandToggle and WindowInfo.ShowMobileButtons ~= false then
+        DynamicIslandController = CreateDynamicIslandToggle()
+        if DynamicIslandController then
+            DynamicIslandController:SetActive(Library.Toggled)
         end
     end
 
