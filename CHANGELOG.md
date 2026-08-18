@@ -1,5 +1,6 @@
 ## 18.08.2026
 
+```diff
 [features]
 + Library.IsMobile — detects Android/iOS at runtime via UserInputService:GetPlatform(); also sets Library.DevicePlatform and Library.OriginalMinSize
 + Library.FloatingSpritesGui — ScreenGui (DisplayOrder 1001) parented to CoreGui/PlayerGui for floating sprite elements
@@ -15,6 +16,7 @@
 + Library:CreateIsnowJunkieKeySystem(Info) — IsnowKeySystem UI + Junkie SDK integration
 + WindowInfo.DynamicIsland — full Dynamic Island toggle system; pill-shaped floating button above topbar that expands/collapses the window; supports LiquidGlass style, glow, shadow, idle shrink, action menu, drag-to-open/lock gestures; configurable via 40+ DynamicIsland* options in CreateWindow
 + Window:SetDynamicIslandVisible, Window:SetDynamicIslandText — runtime control of Dynamic Island state
+```
 
 ## 13.08.2026
 
