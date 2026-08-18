@@ -1,3 +1,21 @@
+## 18.08.2026
+
+[features]
++ Library.IsMobile — detects Android/iOS at runtime via UserInputService:GetPlatform(); also sets Library.DevicePlatform and Library.OriginalMinSize
++ Library.FloatingSpritesGui — ScreenGui (DisplayOrder 1001) parented to CoreGui/PlayerGui for floating sprite elements
++ Library.DynamicIslandOverlayGui — ScreenGui (DisplayOrder 1004) for Dynamic Island overlay rendering
++ Library:AddShadowGlow(Frame, Info) — creates a sliced ImageLabel drop shadow that auto-syncs Position/Size/Visible/ZIndex to its target frame via property change signals; supports Color, Transparency, Padding, Offset, ZIndex, Image overrides
++ Library:SetShadowGlowColor(Shadow, Color) — updates shadow color with scheme key or Color3 support
++ Library:SetShadowGlowTransparency(Shadow, Transparency) — updates shadow transparency safely
++ Funcs:AddHighlightButton(Info) — button with breathing transparency pulse (0.9s Sine InOut loop); supports Icon, AccentColor, Gradient, Stroke
++ Funcs:AddShinyButton(Info) — button with automatic shine sweep every 1.8s
++ Funcs:AddLiquidGlassButton(Info) — glass-style button with shine on hover; higher default transparency
++ Funcs:AddLiquidGlassToggle(Idx, Info) — glass-card toggle with pill switch; accent-colored gradient + outline
++ Library:CreateIsnowKeySystem(Info) — IsnowKeySystem UI integration with custom OnVerify callback
++ Library:CreateIsnowJunkieKeySystem(Info) — IsnowKeySystem UI + Junkie SDK integration
++ WindowInfo.DynamicIsland — full Dynamic Island toggle system; pill-shaped floating button above topbar that expands/collapses the window; supports LiquidGlass style, glow, shadow, idle shrink, action menu, drag-to-open/lock gestures; configurable via 40+ DynamicIsland* options in CreateWindow
++ Window:SetDynamicIslandVisible, Window:SetDynamicIslandText — runtime control of Dynamic Island state
+
 ## 13.08.2026
 
 ```diff
